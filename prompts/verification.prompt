@@ -1,8 +1,8 @@
 Verify the success of the execution against the stated goal.
 
-Goal: {goal}
-Action Taken: {action}
-Execution Result: {result}
+Goal: {{GOAL}}
+Action Taken: {{ACTION}}
+Execution Result: {{RESULT}}
 
 Verification criteria:
 - Did the action achieve its intended outcome?

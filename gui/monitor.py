@@ -97,7 +97,7 @@ class MonitorWindow(QMainWindow):
         self.input_field.setStyleSheet("background-color: #2d2d2d; color: #ffffff; border: 1px solid #3e3e3e; padding: 8px;")
         input_layout.addWidget(self.input_field)
         
-        self.send_button = QPushButton("EXECUTE")
+        self.send_button = QPushButton("SEND")
         self.send_button.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
         self.send_button.clicked.connect(self.send_goal)
         self.send_button.setStyleSheet("background-color: #007acc; color: #ffffff; padding: 8px 20px;")

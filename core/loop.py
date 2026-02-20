@@ -200,13 +200,14 @@ class CognitiveLoop:
                 }
             }
             
+            planning_prompt = self.prompts.get("planning", "Plan the next steps.")
+            planning_prompt = planning_prompt.replace("{{STATE}}", json.dumps(state.to_dict(), indent=2))
+            planning_prompt = planning_prompt.replace("{{GOAL}}", state.goal)
+            planning_prompt = planning_prompt.replace("{{MEMORY}}", self.memory_system.long_term)
+
             plan_messages = [
                 {"role": "system", "content": self.prompts.get("identity", "You are LUNA AI Agent.")},
-                {"role": "system", "content": self.prompts.get("planning", "Plan the next steps.").format(
-                    state=json.dumps(state.to_dict(), indent=2),
-                    goal=state.goal,
-                    memory=self.memory_system.long_term,
-                )}
+                {"role": "system", "content": planning_prompt}
             ] + self.memory_system.short_term
             
             plan_response = self.continuation_engine.call_with_continuation(plan_messages)
@@ -313,12 +314,15 @@ class CognitiveLoop:
             }
         }
         
+        reflection_prompt = self.prompts.get("reflection", "")
+        reflection_prompt = reflection_prompt.replace("{{STATE}}", json.dumps(state.to_dict(), indent=2))
+        reflection_prompt = reflection_prompt.replace("{{GOAL}}", state.goal)
+        reflection_prompt = reflection_prompt.replace("{{ACTION}}", json.dumps(state.last_action, indent=2) if state.last_action else "None")
+        reflection_prompt = reflection_prompt.replace("{{RESULT}}", json.dumps(result.to_dict(), indent=2))
+
         reflect_messages = [
             {"role": "system", "content": self.prompts.get("identity", "")},
-            {"role": "system", "content": self.prompts.get("reflection", "").format(
-                state=json.dumps(state.to_dict(), indent=2),
-                last_result=json.dumps(result.to_dict(), indent=2)
-            )}
+            {"role": "system", "content": reflection_prompt}
         ] + self.memory_system.short_term
         
         reflect_response = self.continuation_engine.call_with_continuation(reflect_messages)

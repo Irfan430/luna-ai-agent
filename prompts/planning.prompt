@@ -9,13 +9,13 @@ Rules:
 - Do NOT hallucinate completion. Only mark a step done when its output is verified.
 
 Current Agent State:
-{state}
+{{STATE}}
 
 User Goal:
-{goal}
+{{GOAL}}
 
 Long-Term Memory Context:
-{memory}
+{{MEMORY}}
 
 Output ONLY valid JSON in this format:
 {

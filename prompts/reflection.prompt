@@ -1,8 +1,8 @@
 Analyze the execution result and update the agent's internal understanding.
 
-Goal: {goal}
-Action Taken: {action}
-Execution Result: {result}
+Goal: {{GOAL}}
+Action Taken: {{ACTION}}
+Execution Result: {{RESULT}}
 
 Reflect on:
 - Was the action successful? What was the exact outcome?
