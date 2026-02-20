@@ -1,15 +1,21 @@
-Generate the next structured action for the execution kernel.
+Generate the next structured action for the Advanced Execution Kernel (AEK).
 The action must follow the schema:
 {
-  "action": "command|file_op|git_op|app_launch|python_exec",
+  "action": "command|file_op|git_op|app_launch|python_exec|process_op|network_op|system_info",
   "parameters": { ... },
   "risk_level": "low|medium|high|dangerous",
   "requires_execution": true
 }
-Available tools:
-- Terminal commands (bash)
-- File operations (create, read, edit, delete, move)
-- Git automation (init, clone, add, commit, push, pull, branch, checkout)
-- OS application launching
-- Python script execution
+
+Available AEK tools:
+- command: Run shell commands (parameters: command, cwd, timeout)
+- file_op: File operations (parameters: op: create|read|edit|delete|move|list, path, content, destination)
+- git_op: Git automation (parameters: op: init|status|add|commit|push|pull|clone|branch|checkout, cwd, files, message, remote, branch, url, path, name)
+- app_launch: Launch system apps (parameters: app, args)
+- python_exec: Execute Python code (parameters: code)
+- process_op: Manage processes (parameters: op: list|kill|find, name, pid)
+- network_op: Network management (parameters: op: ping|check_port|list_interfaces, host, port)
+- system_info: Get system stats (parameters: {})
+
+Always prioritize deterministic tools over raw shell commands when possible.
 Action:
