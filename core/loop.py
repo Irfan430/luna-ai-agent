@@ -1,15 +1,12 @@
 """
-LUNA AI Agent - Cognitive Loop 6.0
+LUNA AI Agent - Cognitive Loop 7.0
 Author: IRFAN
 
-Phase 2 & 6: Performance & Simplification
-  - direct_action → single execution pass.
-  - complex_plan → iterative cognitive loop.
-  - Remove unnecessary plan regeneration.
-  - Limit simple tasks to 1 iteration.
-  - Max 2 iterations for action retry.
-  - Complex tasks max 5.
-  - Failure clarity: detailed error reporting.
+Phase 2: Routing Guard & BrainOutput Integration
+  - Use BrainOutput model for routing results.
+  - If mode == conversation: bypass execution layer completely.
+  - Never enter cognitive loop for numeric input.
+  - Structural consistency for all cognitive steps.
 """
 
 import json
@@ -21,7 +18,7 @@ from typing import Dict, Any, List, Optional
 
 from llm.provider import LLMManager
 from llm.continuation import ContinuationEngine
-from llm.router import LLMRouter, repair_and_parse_json
+from llm.router import LLMRouter, BrainOutput, normalize_brain_output, repair_and_parse_json
 from execution.kernel import ExecutionKernel
 from risk.engine import RiskEngine
 from memory.system import MemorySystem
@@ -79,36 +76,45 @@ class CognitiveLoop:
         return prompts
 
     def run(self, goal: str) -> TaskResult:
-        """Run the cognitive loop with Phase 2 & 6 stabilization."""
+        """Run the cognitive loop with Phase 2 routing guard."""
+        # Phase 2: Never enter cognitive loop for numeric input
+        if isinstance(goal, (int, float)) or (isinstance(goal, str) and goal.isdigit()):
+            response = f"I received the numeric input: {goal}. How would you like me to use this?"
+            return TaskResult(status="success", content=response, verified=True)
+
+        # Phase 1 & 2: Routing Guard
         routing = self.router.route(goal, history=self.memory_system.short_term)
-        mode = routing.get("mode", "conversation")
         
-        # Phase 1: conversation → no planning loop
-        if mode == "conversation":
-            response = routing.get("response", "")
+        # Ensure we have a BrainOutput object
+        if not isinstance(routing, BrainOutput):
+            routing = normalize_brain_output(routing)
+
+        # Phase 2: conversation → bypass execution layer completely
+        if routing.mode == "conversation":
+            response = routing.response
             print(f"\nLUNA: {response}")
-            self.memory_system.add_short_term("user", goal)
+            self.memory_system.add_short_term("user", str(goal))
             self.memory_system.add_short_term("assistant", response)
             return TaskResult(status="success", content=response, verified=True)
 
         # Phase 2: direct_action → single execution pass
-        if mode == "direct_action":
-            action = routing.get("action")
-            params = routing.get("parameters", {})
+        if routing.mode == "direct_action":
+            action = routing.action
+            params = routing.parameters
             print(f"Direct Action: {action}...")
             result = self.execution_kernel.execute(action, params)
             if result.status == "success":
-                return result
-            # If direct action fails, we might want to try once more or escalate to complex_plan
+                return TaskResult(status="success", content=result.content, verified=True)
+            
             print(f"Direct action failed: {result.error}. Escalating to cognitive loop.")
-            mode = "complex_plan"
+            routing.mode = "complex_plan"
 
-        # Phase 6: Complex tasks max 5, simple tasks max 1 (handled by mode)
-        state = AgentState(goal)
-        max_iters = 5 if mode == "complex_plan" else 2
+        # Complex Plan Iterative Loop
+        state = AgentState(str(goal))
+        max_iters = 5 if routing.mode == "complex_plan" else 2
         
-        if routing.get("steps"):
-            state.current_plan = routing.get("steps")
+        if routing.steps:
+            state.current_plan = routing.steps
 
         while not state.is_complete and state.iteration < max_iters:
             state.iteration += 1
@@ -122,22 +128,19 @@ class CognitiveLoop:
                     break
 
                 current_step = state.current_plan[state.current_step_index]
-                action_data = {
-                    "action": current_step.get("action"),
-                    "parameters": current_step.get("parameters", {}),
-                    "thought": current_step.get("description", ""),
-                }
+                action_name = current_step.get("action")
+                action_params = current_step.get("parameters", {})
 
                 # Risk check
-                risk_report = self.risk_engine.get_risk_report(action_data["action"], action_data["parameters"])
+                risk_report = self.risk_engine.get_risk_report(action_name, action_params)
                 if risk_report["blocked"]:
                     return TaskResult.failure(f"Action blocked: {risk_report['reason']}")
 
                 # Execute
-                result = self.execution_kernel.execute(action_data["action"], action_data["parameters"])
-                state.last_action = action_data
+                result = self.execution_kernel.execute(action_name, action_params)
+                state.last_action = {"action": action_name, "parameters": action_params}
                 state.last_result = result
-                state.attempts.append({"action": action_data, "result": result.to_dict()})
+                state.attempts.append({"action": state.last_action, "result": result.to_dict()})
 
                 # Reflect
                 self._reflect_and_update(state, result)
@@ -149,9 +152,8 @@ class CognitiveLoop:
                 break
 
         if state.is_complete and state.last_result:
-            return state.last_result
+            return TaskResult(status="success", content=state.last_result.content, verified=True)
 
-        # Phase 7: Failure Clarity
         return self._format_failure(state)
 
     def _analyze_and_plan(self, state: AgentState):
@@ -159,6 +161,8 @@ class CognitiveLoop:
         planning_prompt = planning_template.replace("{{STATE}}", json.dumps(state.to_dict())).replace("{{GOAL}}", state.goal)
         messages = [{"role": "system", "content": planning_prompt}] + self.memory_system.short_term
         response = self.llm_manager.call(messages, temperature=0.1)
+        
+        # Use normalization for planning output too
         success, parsed = repair_and_parse_json(response.content)
         if success and parsed:
             state.current_plan = parsed.get("next_steps", [])
@@ -169,6 +173,7 @@ class CognitiveLoop:
         reflection_prompt = reflection_template.replace("{{STATE}}", json.dumps(state.to_dict())).replace("{{RESULT}}", json.dumps(result.to_dict()))
         messages = [{"role": "system", "content": reflection_prompt}] + self.memory_system.short_term
         response = self.llm_manager.call(messages, temperature=0.1)
+        
         success, parsed = repair_and_parse_json(response.content)
         if success and parsed:
             if parsed.get("outcome_assessment") == "success" or parsed.get("is_complete"):
@@ -178,15 +183,12 @@ class CognitiveLoop:
                 state.current_step_index = 0
 
     def _format_failure(self, state: AgentState) -> TaskResult:
-        """Phase 7: Detailed failure reporting."""
         last_attempt = state.attempts[-1] if state.attempts else None
         error_msg = f"Task failed after {state.iteration} iterations.\n"
         if last_attempt:
             error_msg += f"Last attempted action: {last_attempt['action']['action']}\n"
             error_msg += f"Error: {last_attempt['result']['error']}\n"
-            error_msg += f"Verification: {last_attempt['result']['verified']}\n"
         
-        # Get a suggestion from LLM
         suggestion_prompt = f"The user goal was: {state.goal}. The last attempt failed with: {error_msg}. Suggest a fix."
         try:
             suggestion = self.llm_manager.call([{"role": "user", "content": suggestion_prompt}]).content

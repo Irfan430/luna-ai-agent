@@ -1,23 +1,64 @@
 """
-LUNA AI Agent - Intent Routing Layer v6.0
+LUNA AI Agent - Intent Routing Layer v7.0
 Author: IRFAN
 
-Phase 1 Intent Routing Fix:
-  - Classify request into: conversation, direct_action, complex_plan.
-  - conversation → no planning loop.
-  - direct_action → single execution pass.
-  - complex_plan → iterative cognitive loop.
-  - JSON repair fallback (1 retry max).
+Phase 1 & 2: Strict Brain Contract & Routing Guard
+  - BrainOutput model for normalized LLM responses.
+  - Strict normalization logic to prevent crashes.
+  - Routing guard to bypass execution for conversation.
 """
 
 import json
 import re
 import logging
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, Union
+from dataclasses import dataclass, field
 
 from llm.provider import LLMManager
 
 logger = logging.getLogger("luna.llm.router")
+
+@dataclass
+class BrainOutput:
+    """Strict contract for LUNA's cognitive brain output."""
+    mode: str = "conversation"
+    response: str = ""
+    action: Optional[str] = None
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    steps: List[Dict[str, Any]] = field(default_factory=list)
+    confidence: float = 0.0
+
+def normalize_brain_output(raw: Any) -> BrainOutput:
+    """Normalize any LLM output into a strict BrainOutput model. Never crashes."""
+    if isinstance(raw, str):
+        # If it's just a string, treat as conversation
+        return BrainOutput(mode="conversation", response=raw.strip(), confidence=0.5)
+    
+    if isinstance(raw, (int, float)):
+        # If it's numeric, treat as conversation
+        return BrainOutput(mode="conversation", response=str(raw), confidence=0.5)
+
+    if not isinstance(raw, dict):
+        # Fallback for any other type
+        return BrainOutput(mode="conversation", response=str(raw), confidence=0.0)
+
+    # Map fields safely from dictionary
+    try:
+        mode = str(raw.get("mode", "conversation")).lower()
+        if mode not in ["conversation", "direct_action", "complex_plan"]:
+            mode = "conversation"
+            
+        return BrainOutput(
+            mode=mode,
+            response=str(raw.get("response", "")),
+            action=raw.get("action"),
+            parameters=raw.get("parameters") if isinstance(raw.get("parameters"), dict) else {},
+            steps=raw.get("steps") if isinstance(raw.get("steps"), list) else [],
+            confidence=float(raw.get("confidence", 0.0))
+        )
+    except Exception as e:
+        logger.error(f"Normalization error: {e}")
+        return BrainOutput(mode="conversation", response="I encountered an internal error processing that.", confidence=0.0)
 
 # ------------------------------------------------------------------
 # Unified Brain Prompt
@@ -27,13 +68,8 @@ Your job is to classify the user's input and decide the execution mode.
 
 Modes:
 - "conversation": For greetings, simple questions, or general talk.
-- "direct_action": For a single, immediate OS/file/app task (e.g., "open chrome", "create file x.txt").
+- "direct_action": For a single, immediate OS/file/app task.
 - "complex_plan": For complex, multi-step goals requiring reasoning.
-
-Rules:
-- If mode is "conversation", provide a direct "response".
-- If mode is "direct_action", provide the "action" and "parameters".
-- If mode is "complex_plan", provide the initial "steps".
 
 Output ONLY valid JSON.
 
@@ -44,13 +80,7 @@ Format:
   "response": "string (for conversation)",
   "action": "string (for direct_action)",
   "parameters": {} (for direct_action),
-  "steps": [
-    {
-      "action": "string",
-      "parameters": {},
-      "description": "string"
-    }
-  ] (for complex_plan)
+  "steps": [{"action": "string", "parameters": {}, "description": "string"}] (for complex_plan)
 }
 """
 
@@ -108,8 +138,8 @@ class LLMRouter:
     def __init__(self, llm_manager: LLMManager):
         self.llm_manager = llm_manager
 
-    def route(self, user_input: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
-        """Classify input and return unified brain decision."""
+    def route(self, user_input: str, history: List[Dict[str, str]] = None) -> BrainOutput:
+        """Classify input and return normalized BrainOutput."""
         messages = [{"role": "system", "content": BRAIN_SYSTEM_PROMPT}]
         if history:
             messages.extend(history)
@@ -120,33 +150,13 @@ class LLMRouter:
             raw_text = response.content
 
             success, parsed = repair_and_parse_json(raw_text)
-
+            
             if success and parsed:
-                return {
-                    "mode": parsed.get("mode", "conversation"),
-                    "confidence": float(parsed.get("confidence", 0.0)),
-                    "response": parsed.get("response", ""),
-                    "action": parsed.get("action", ""),
-                    "parameters": parsed.get("parameters", {}),
-                    "steps": parsed.get("steps", []),
-                }
+                return normalize_brain_output(parsed)
 
-            return {
-                "mode": "conversation",
-                "confidence": 0.5,
-                "response": raw_text.strip() if raw_text else "I encountered an error processing that.",
-                "action": "",
-                "parameters": {},
-                "steps": [],
-            }
+            # If parsing fails, treat raw text as conversation
+            return normalize_brain_output(raw_text)
 
         except Exception as e:
             logger.error(f"[Brain] Routing error: {e}")
-            return {
-                "mode": "conversation",
-                "confidence": 0.0,
-                "response": "System error in cognitive routing.",
-                "action": "",
-                "parameters": {},
-                "steps": [],
-            }
+            return BrainOutput(mode="conversation", response="System error in cognitive routing.", confidence=0.0)

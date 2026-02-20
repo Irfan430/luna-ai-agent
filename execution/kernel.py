@@ -1,14 +1,13 @@
 """
-LUNA AI Agent - Advanced Execution Kernel (AEK) v6.0
+LUNA AI Agent - Advanced Execution Kernel (AEK) v7.0
 Author: IRFAN
 
-Phase 3: Live File Creation Visibility
+Phase 3: Execution Transparency
   - Show full code in GUI.
-  - Show "Writing file..."
-  - Actually write file.
+  - Write file.
   - Verify file exists.
-  - Show file path + size.
-  - If file creation fails → show real error.
+  - Show absolute path and file size.
+  - If failure → show real error.
 """
 
 import os
@@ -115,23 +114,37 @@ class ExecutionKernel:
         return ExecutionResult("success", output, verified=True)
 
     def _file_operation(self, params: Dict[str, Any]) -> ExecutionResult:
-        """Phase 3: Live File Creation Visibility."""
+        """Phase 3: Execution Transparency."""
         op = params.get("op")
         path = params.get("path")
         content = params.get("content", "")
         
         if op == "create":
-            print(f"Writing file: {path}...")
+            # 1. Show full code in GUI (via print for now, GUI will capture)
+            print(f"\n[AEK] Writing file: {path}...")
             print(f"--- CODE START ---\n{content}\n--- CODE END ---")
+            
             try:
+                # 2. Write file
                 with open(path, 'w') as f: f.write(content)
+                
+                # 3. Verify file exists
                 if os.path.exists(path):
+                    # 4. Show absolute path and file size
+                    abs_path = os.path.abspath(path)
                     size = os.path.getsize(path)
-                    return ExecutionResult("success", f"File created: {path} (Size: {size} bytes)", verified=True)
+                    msg = f"File created successfully.\nPath: {abs_path}\nSize: {size} bytes"
+                    print(f"[AEK] {msg}")
+                    return ExecutionResult("success", msg, verified=True)
                 else:
-                    return ExecutionResult("failed", "", f"File creation failed: {path} not found after write.", verified=False)
+                    err = f"File creation failed: {path} not found after write."
+                    print(f"[AEK] ERROR: {err}")
+                    return ExecutionResult("failed", "", err, verified=False)
             except Exception as e:
-                return ExecutionResult("failed", "", f"File creation error: {str(e)}", verified=False)
+                # 5. If failure → show real error
+                err = f"File creation error: {str(e)}"
+                print(f"[AEK] ERROR: {err}")
+                return ExecutionResult("failed", "", err, verified=False)
         
         elif op == "read":
             try:
