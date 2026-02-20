@@ -1,18 +1,30 @@
-# LUNA Cognitive Agent Dependencies
+# LUNA AI Agent - Complete Dependency List
+# Author: IRFAN
 
-# LLM Integration
+# Core LLM Integration
 openai>=1.0.0
 requests>=2.31.0
 
-# Configuration
+# Configuration & Utilities
 pyyaml>=6.0
+python-dotenv>=1.0.0
 
-# GUI
+# GUI (PyQt6)
 PyQt6>=6.6.0
 
-# Voice (optional)
+# Voice & Audio
 pyttsx3>=2.90
 SpeechRecognition>=3.10.0
+vosk>=0.3.45
+sounddevice>=0.5.5
 
-# Utilities
-python-dotenv>=1.0.0
+# OS Control & Automation
+pyautogui>=0.9.54
+pynput>=1.8.1
+psutil>=5.9.0
+
+# System Utilities
+python-xlib>=0.33  # For X11 window management on Linux
+
+# Optional: For advanced features
+numpy>=1.21.0
