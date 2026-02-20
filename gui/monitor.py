@@ -1,12 +1,13 @@
 """
-LUNA AI Agent - Professional GUI v7.0
+LUNA AI Agent - Professional GUI v8.0
 Author: IRFAN
 
-Phase 4, 5, 6, 7: Consistency Upgrade
-  - Execution timeline logs actual action, result, success/failure, timestamp, and error.
-  - Voice UI reflects real state (mic active, passive, wake detected).
-  - System tray fix (load valid icon, initialize only if supported).
-  - Error isolation (brain routing wrapped in try/except, no UI crash).
+Phase 6 & 7: Two-Way Voice System & GUI Behavior Fix
+  - While task running: Send button becomes STOP, Disable input field.
+  - STOP button interrupts execution thread.
+  - Voice button: Visually change when active, Show "Listening...", "Passive Mode".
+  - Live transcription in chat.
+  - System tray icon when minimized.
 """
 
 import sys
@@ -64,7 +65,6 @@ class AgentWorker(QThread):
         self._is_running = True
 
     def run(self):
-        # Phase 7: Error Isolation - Wrap brain routing in try/except
         try:
             result = self.loop.run(self.goal)
             if self._is_running:
@@ -72,7 +72,6 @@ class AgentWorker(QThread):
         except Exception as e:
             logger.error(f"Cognitive error: {e}")
             if self._is_running:
-                # Return structured error to chat
                 self.finished.emit(TaskResult.failure(f"Cognitive Engine Error: {str(e)}"))
 
     def stop(self):
@@ -95,7 +94,7 @@ class MonitorWindow(QMainWindow):
         self.stats_timer.start(2000)
 
     def init_ui(self):
-        self.setWindowTitle("LUNA 7.0 — COGNITIVE OPERATING SYSTEM")
+        self.setWindowTitle("LUNA 8.0 — COGNITIVE OPERATING SYSTEM")
         self.setMinimumSize(1200, 800)
         
         central = QWidget()
@@ -132,7 +131,7 @@ class MonitorWindow(QMainWindow):
         input_layout.addWidget(self.action_btn)
         chat_layout.addLayout(input_layout)
         
-        # Timeline - Phase 4: Logging Fix
+        # Timeline
         self.timeline = QTableWidget(0, 4)
         self.timeline.setHorizontalHeaderLabels(["Timestamp", "Action", "Status", "Error/Result"])
         self.timeline.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -157,8 +156,6 @@ class MonitorWindow(QMainWindow):
         self.provider_lbl = QLabel(f"Provider: {self.config['llm']['default_provider']}")
         self.risk_lbl = QLabel("Risk: Low")
         self.token_lbl = QLabel("Tokens: 0")
-        
-        # Phase 5: Voice UI Integrity
         self.voice_status_lbl = QLabel("Voice: Passive Mode")
         self.voice_status_lbl.setStyleSheet("color: gray;")
         
@@ -179,14 +176,11 @@ class MonitorWindow(QMainWindow):
         layout.addWidget(right_panel, 1)
 
     def init_tray(self):
-        # Phase 6: System Tray Fix
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            logger.info("System tray not available on this platform.")
             return
 
         self.tray_icon = QSystemTrayIcon(self)
-        # Try to load a valid icon if it exists, otherwise use a default
-        icon_path = "architecture.png" # Using existing file as placeholder
+        icon_path = "architecture.png"
         if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
         
@@ -218,9 +212,10 @@ class MonitorWindow(QMainWindow):
         goal = self.input_field.text().strip()
         if not goal: return
         
-        self.chat_display.append(f"<b>USER:</b> {goal}")
+        self.chat_display.append(f"<b>YOU:</b> {goal}")
         self.input_field.clear()
         
+        # Phase 7: Disable input, change button to STOP
         self.input_field.setEnabled(False)
         self.action_btn.setText("STOP")
         self.action_btn.setStyleSheet("background-color: #d13438; color: white; padding: 8px 20px;")
@@ -238,7 +233,6 @@ class MonitorWindow(QMainWindow):
     def handle_result(self, result):
         self.chat_display.append(f"<b>LUNA:</b> {result.content}")
         
-        # Phase 4: Logging Fix - Log actual action, result, success/failure, timestamp, and error
         row = self.timeline.rowCount()
         self.timeline.insertRow(row)
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -251,7 +245,6 @@ class MonitorWindow(QMainWindow):
         self.timeline.setItem(row, 2, QTableWidgetItem(status))
         self.timeline.setItem(row, 3, QTableWidgetItem(error_or_result))
         
-        # Color coding for status
         if result.status == "success":
             self.timeline.item(row, 2).setForeground(QColor("green"))
         else:
@@ -265,10 +258,10 @@ class MonitorWindow(QMainWindow):
         self.action_btn.setStyleSheet("background-color: #007acc; color: white; padding: 8px 20px;")
 
     def toggle_voice(self, checked):
-        # Phase 5: Voice UI Integrity
+        # Phase 6: Voice UI Improvements
         if checked:
-            self.voice_btn.setStyleSheet("background-color: #28a745; color: white;") # Green indicator
-            self.voice_status_lbl.setText("Voice: Active Listening...")
+            self.voice_btn.setStyleSheet("background-color: #28a745; color: white;")
+            self.voice_status_lbl.setText("Voice: Listening...")
             self.voice_status_lbl.setStyleSheet("color: #28a745;")
             self.chat_display.append("<i>Voice system: Active Listening...</i>")
         else:

@@ -1,12 +1,14 @@
 """
-LUNA AI Agent - Cognitive Loop 7.0
+LUNA AI Agent - Cognitive Loop 8.0
 Author: IRFAN
 
-Phase 2: Routing Guard & BrainOutput Integration
-  - Use BrainOutput model for routing results.
-  - If mode == conversation: bypass execution layer completely.
-  - Never enter cognitive loop for numeric input.
-  - Structural consistency for all cognitive steps.
+Phase 2 & 9: Speed-First Hybrid Execution & Performance Optimization
+  - direct_action → single execution pass.
+  - deep_plan → iterative cognitive loop (max 5).
+  - conversation → bypass execution layer.
+  - Remove unnecessary re-planning.
+  - Limit simple tasks to 1 iteration.
+  - Max 2 iterations for action retry.
 """
 
 import json
@@ -59,7 +61,7 @@ class CognitiveLoop:
         self.execution_kernel = ExecutionKernel()
         self.risk_engine = RiskEngine(config)
         self.memory_system = MemorySystem(config)
-        self.router = LLMRouter(self.llm_manager)
+        self.router = LLMRouter(self.llm_manager, config)
         self.prompts = self._load_prompts()
 
     def _load_prompts(self) -> Dict[str, str]:
@@ -76,16 +78,15 @@ class CognitiveLoop:
         return prompts
 
     def run(self, goal: str) -> TaskResult:
-        """Run the cognitive loop with Phase 2 routing guard."""
-        # Phase 2: Never enter cognitive loop for numeric input
+        """Run the cognitive loop with Phase 2 speed-first model."""
+        # Numeric input guard
         if isinstance(goal, (int, float)) or (isinstance(goal, str) and goal.isdigit()):
             response = f"I received the numeric input: {goal}. How would you like me to use this?"
             return TaskResult(status="success", content=response, verified=True)
 
-        # Phase 1 & 2: Routing Guard
+        # Phase 2: Routing Guard
         routing = self.router.route(goal, history=self.memory_system.short_term)
         
-        # Ensure we have a BrainOutput object
         if not isinstance(routing, BrainOutput):
             routing = normalize_brain_output(routing)
 
@@ -102,16 +103,21 @@ class CognitiveLoop:
             action = routing.action
             params = routing.parameters
             print(f"Direct Action: {action}...")
+            
+            # Execute once
             result = self.execution_kernel.execute(action, params)
+            
+            # Verify once
             if result.status == "success":
                 return TaskResult(status="success", content=result.content, verified=True)
             
-            print(f"Direct action failed: {result.error}. Escalating to cognitive loop.")
-            routing.mode = "complex_plan"
+            # If direct action fails, escalate to deep_plan
+            print(f"Direct action failed: {result.error}. Escalating to deep_plan.")
+            routing.mode = "deep_plan"
 
-        # Complex Plan Iterative Loop
+        # Phase 9: deep_plan → iterative cognitive loop (max 5)
         state = AgentState(str(goal))
-        max_iters = 5 if routing.mode == "complex_plan" else 2
+        max_iters = 5 if routing.mode == "deep_plan" else 2
         
         if routing.steps:
             state.current_plan = routing.steps
@@ -121,6 +127,7 @@ class CognitiveLoop:
             print(f"\n--- LUNA Iteration {state.iteration} ---")
 
             try:
+                # Phase 9: Remove unnecessary re-planning
                 if not state.current_plan or (state.last_result and state.last_result.status == "failed"):
                     self._analyze_and_plan(state)
 
@@ -162,7 +169,6 @@ class CognitiveLoop:
         messages = [{"role": "system", "content": planning_prompt}] + self.memory_system.short_term
         response = self.llm_manager.call(messages, temperature=0.1)
         
-        # Use normalization for planning output too
         success, parsed = repair_and_parse_json(response.content)
         if success and parsed:
             state.current_plan = parsed.get("next_steps", [])

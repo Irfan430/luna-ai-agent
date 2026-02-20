@@ -10,6 +10,7 @@ import os
 import yaml
 from core.loop import CognitiveLoop
 from execution.kernel import ExecutionResult
+from os_detector import detect_and_save_os
 
 
 def print_banner():
@@ -65,6 +66,8 @@ def run_cli():
     
     # Initialize cognitive loop
     try:
+        # Phase 1: Detect OS ONLY ONCE at first run
+        detect_and_save_os("config.yaml")
         config = load_config("config.yaml")
         loop = CognitiveLoop(config)
         print(f"\n✓ LUNA initialized successfully")

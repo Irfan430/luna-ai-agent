@@ -1,0 +1,14 @@
+[
+  {
+    "role": "user",
+    "content": "Hello LUNA, what is your current version?",
+    "timestamp": "2026-02-20T11:42:38.331375",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "I'm currently running version 1.0.0, but I'm always learning and updating with each interaction!",
+    "timestamp": "2026-02-20T11:42:38.331606",
+    "is_voice": false
+  }
+]

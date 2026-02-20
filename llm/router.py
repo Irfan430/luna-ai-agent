@@ -1,11 +1,14 @@
 """
-LUNA AI Agent - Intent Routing Layer v7.0
+LUNA AI Agent - Intent Routing Layer v8.0
 Author: IRFAN
 
-Phase 1 & 2: Strict Brain Contract & Routing Guard
+Phase 2 & 3: Speed-First Hybrid Execution & Brain Normalization
+  - Classify request into: conversation, direct_action, deep_plan.
+  - conversation → no planning loop.
+  - direct_action → single execution pass.
+  - deep_plan → iterative cognitive loop.
   - BrainOutput model for normalized LLM responses.
   - Strict normalization logic to prevent crashes.
-  - Routing guard to bypass execution for conversation.
 """
 
 import json
@@ -45,8 +48,11 @@ def normalize_brain_output(raw: Any) -> BrainOutput:
     # Map fields safely from dictionary
     try:
         mode = str(raw.get("mode", "conversation")).lower()
-        if mode not in ["conversation", "direct_action", "complex_plan"]:
-            mode = "conversation"
+        if mode not in ["conversation", "direct_action", "deep_plan"]:
+            # Simple heuristic for mode if not explicitly provided
+            if raw.get("action"): mode = "direct_action"
+            elif raw.get("steps"): mode = "deep_plan"
+            else: mode = "conversation"
             
         return BrainOutput(
             mode=mode,
@@ -68,19 +74,24 @@ Your job is to classify the user's input and decide the execution mode.
 
 Modes:
 - "conversation": For greetings, simple questions, or general talk.
-- "direct_action": For a single, immediate OS/file/app task.
-- "complex_plan": For complex, multi-step goals requiring reasoning.
+- "direct_action": For a single, immediate OS/file/app task (e.g., "open chrome", "create file x.txt").
+- "deep_plan": For complex, multi-step goals requiring reasoning.
+
+Rules:
+- If simple command → direct_action
+- If short chat → conversation
+- Only explicit complex tasks → deep_plan
 
 Output ONLY valid JSON.
 
 Format:
 {
-  "mode": "conversation | direct_action | complex_plan",
+  "mode": "conversation | direct_action | deep_plan",
   "confidence": 0.0-1.0,
   "response": "string (for conversation)",
   "action": "string (for direct_action)",
   "parameters": {} (for direct_action),
-  "steps": [{"action": "string", "parameters": {}, "description": "string"}] (for complex_plan)
+  "steps": [{"action": "string", "parameters": {}, "description": "string"}] (for deep_plan)
 }
 """
 
@@ -135,12 +146,18 @@ def repair_and_parse_json(text: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
 class LLMRouter:
     """Unified LLM Brain routing layer."""
 
-    def __init__(self, llm_manager: LLMManager):
+    def __init__(self, llm_manager: LLMManager, config: Dict[str, Any] = None):
         self.llm_manager = llm_manager
+        self.config = config or {}
+        self.system_info = self.config.get('system', {})
 
     def route(self, user_input: str, history: List[Dict[str, str]] = None) -> BrainOutput:
         """Classify input and return normalized BrainOutput."""
-        messages = [{"role": "system", "content": BRAIN_SYSTEM_PROMPT}]
+        # Inject OS info into brain prompt via config
+        os_info = f"Current OS: {self.system_info.get('os', 'Unknown')}, Architecture: {self.system_info.get('architecture', 'Unknown')}, User: {self.system_info.get('username', 'Unknown')}"
+        system_prompt = BRAIN_SYSTEM_PROMPT + f"\n\n{os_info}"
+        
+        messages = [{"role": "system", "content": system_prompt}]
         if history:
             messages.extend(history)
         messages.append({"role": "user", "content": user_input})
