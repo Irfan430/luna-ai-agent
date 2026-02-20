@@ -100,8 +100,9 @@ def run_cli():
             result = loop.run(user_input)
             print_result(result)
             
-        except KeyboardInterrupt:
-            print("\n\nInterrupted. Type 'exit' to quit.")
+        except (KeyboardInterrupt, EOFError):
+            print("\n\nInterrupted. Goodbye!")
+            break
         except Exception as e:
             print(f"\n✗ Error: {e}")
 

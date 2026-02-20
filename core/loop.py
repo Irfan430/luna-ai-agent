@@ -167,7 +167,21 @@ class CognitiveLoop:
 
                 try:
                     current_step = state.current_plan[state.current_step_index]
-                    action_data = current_step.get("action")
+                    # Bug Fix #1: LLM returns action directly in step dict (not nested under 'action' key)
+                    # Support both formats: {"action": {...}} and flat {"action": "type", "parameters": {...}}
+                    if isinstance(current_step.get("action"), dict):
+                        action_data = current_step.get("action")
+                    elif isinstance(current_step.get("action"), str):
+                        # Flat format: action type is a string, build action_data from step itself
+                        action_data = {
+                            "action": current_step.get("action"),
+                            "parameters": current_step.get("parameters", {}),
+                            "thought": current_step.get("description", ""),
+                            "risk_level": current_step.get("risk_estimate", "low"),
+                            "expected_outcome": current_step.get("expected_outcome", ""),
+                        }
+                    else:
+                        action_data = None
                 except (IndexError, KeyError, AttributeError) as e:
                     logger.error(f"Plan access error: {e}")
                     state.current_plan = [] # Force replan
@@ -356,12 +370,16 @@ class CognitiveLoop:
         print("Reflecting on result and updating state...")
         state.last_result = result
         
-        # Reflection schema
+        # Reflection schema - Bug Fix #3: Updated to match reflection.prompt output
         reflect_schema = {
-            "required": ["status", "reflection"],
+            "required": ["outcome_assessment", "reasoning"],
             "optional": {
                 "is_complete": False,
-                "repair_plan": []
+                "repair_plan": [],
+                "progress_toward_goal": "",
+                "errors_detected": "none",
+                "stagnation_risk": False,
+                "next_step_recommendation": ""
             }
         }
         
@@ -393,11 +411,22 @@ class CognitiveLoop:
                     )
                 )
                 if is_valid:
-                    if sanitized_reflect.get("is_complete"):
+                    # Bug Fix #3 & #5: Correctly handle completion detection
+                    outcome = sanitized_reflect.get("outcome_assessment")
+                    
+                    # If LLM explicitly says it's complete
+                    if sanitized_reflect.get("is_complete") is True:
                         state.is_complete = True
+                    # Or if outcome is success and no further steps are recommended
+                    elif outcome == "success" and not sanitized_reflect.get("repair_plan"):
+                        state.is_complete = True
+                        
                     if sanitized_reflect.get("repair_plan"):
                         state.current_plan = sanitized_reflect["repair_plan"]
                         state.current_step_index = 0
+                    
+                    # Log reflection for debugging
+                    print(f"Reflection: {outcome} | Complete: {state.is_complete}")
                 else:
                     logger.error(f"Reflection schema validation failed: {sanitized_reflect}")
         except Exception as e:

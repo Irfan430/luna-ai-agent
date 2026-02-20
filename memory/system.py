@@ -135,8 +135,9 @@ class MemorySystem:
             {"role": "system", "content": "You are a helpful assistant that summarizes conversations."},
             {"role": "user", "content": summarization_prompt},
         ]
-        summary_response = self.llm_manager.get_provider().chat_completion(messages)
-        return summary_response.get("content", "")
+        # Bug Fix #2: LLMProvider has call() not chat_completion()
+        response = self.llm_manager.call(messages)
+        return response.content
 
     def compress(self, summary: str):
         """Compress short-term memory by replacing older messages with a summary."""
@@ -181,8 +182,9 @@ class MemorySystem:
                 {"role": "system", "content": "You are a helpful assistant that summarizes past tasks."},
                 {"role": "user", "content": episodic_summary_prompt},
             ]
-            summary_response = self.llm_manager.get_provider().chat_completion(messages)
-            self.compressed_long_term_memory = summary_response.get("content", "")
+            # Bug Fix #2: LLMProvider has call() not chat_completion()
+            response = self.llm_manager.call(messages)
+            self.compressed_long_term_memory = response.content
 
     def rebuild_context_with_compression(self) -> List[Dict[str, str]]:
         """Rebuilds the full context, prioritizing compressed long-term memory if available."""

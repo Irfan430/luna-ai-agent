@@ -17,6 +17,16 @@ User Goal:
 Long-Term Memory Context:
 {{MEMORY}}
 
+Available AEK tools:
+- command: Run shell commands (parameters: command, cwd, timeout)
+- file_op: File operations (parameters: op: create|read|edit|delete|move|list, path, content, destination)
+- git_op: Git automation (parameters: op: init|status|add|commit|push|pull|clone|branch|checkout, cwd, files, message, remote, branch, url, path, name)
+- app_launch: Launch system apps (parameters: app, args)
+- python_exec: Execute Python code (parameters: code)
+- process_op: Manage processes (parameters: op: list|kill|find, name, pid)
+- network_op: Network management (parameters: op: ping|check_port|list_interfaces, host, port)
+- system_info: Get system stats (parameters: {})
+
 Output ONLY valid JSON in this format:
 {
   "reasoning": "<brief internal analysis>",
@@ -24,7 +34,7 @@ Output ONLY valid JSON in this format:
     {
       "step_index": 1,
       "description": "<what this step does>",
-      "action": "<action_type>",
+      "action": "command|file_op|git_op|app_launch|python_exec|process_op|network_op|system_info",
       "parameters": {},
       "expected_outcome": "<what success looks like>",
       "risk_estimate": "low|medium|high"
