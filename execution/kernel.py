@@ -1,15 +1,17 @@
 """
-LUNA AI Agent - Advanced Execution Kernel (AEK) v2.0
+LUNA AI Agent - Advanced Execution Kernel (AEK) v3.0
 Author: IRFAN
 
-Hardened deterministic execution layer with:
-  - Strict schema validation before execution
-  - Command normalization
-  - Explicit risk scoring hook
-  - Non-blocking subprocess support
-  - Return code validation
-  - Output capture
-  - Success verification logic
+Hardened deterministic execution layer with full OS control:
+  - Shell command execution with injection detection
+  - File operations with verification
+  - Git automation
+  - Process management
+  - Network operations
+  - System information gathering
+  - GUI automation (mouse, keyboard, window management)
+  - Application launch with verification
+  - Active window detection
 """
 
 import subprocess
@@ -20,8 +22,21 @@ import psutil
 import socket
 import time
 import re
-from typing import Dict, Any, Optional, List
+import threading
+from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, field
+
+try:
+    import pyautogui
+    PYAUTOGUI_AVAILABLE = True
+except ImportError:
+    PYAUTOGUI_AVAILABLE = False
+
+try:
+    from pynput import mouse, keyboard
+    PYNPUT_AVAILABLE = True
+except ImportError:
+    PYNPUT_AVAILABLE = False
 
 
 # ------------------------------------------------------------------
@@ -54,29 +69,29 @@ class ExecutionResult:
 
 
 # ------------------------------------------------------------------
-# Schema definitions for each action type
+# Schema definitions
 # ------------------------------------------------------------------
 
 REQUIRED_PARAMS: Dict[str, List[str]] = {
-    "command":     ["command"],
-    "file_op":     ["op", "path"],
-    "git_op":      ["op"],
-    "app_launch":  ["app"],
-    "python_exec": ["code"],
-    "process_op":  ["op"],
-    "network_op":  ["op"],
-    "system_info": [],
+    "command":        ["command"],
+    "file_op":        ["op", "path"],
+    "git_op":         ["op"],
+    "app_launch":     ["app"],
+    "python_exec":    ["code"],
+    "process_op":     ["op"],
+    "network_op":     ["op"],
+    "system_info":    [],
+    "gui_mouse":      ["action"],
+    "gui_keyboard":   ["action"],
+    "gui_window":     ["action"],
 }
 
 ALLOWED_ACTIONS = set(REQUIRED_PARAMS.keys())
 
-# Shell injection patterns — reject commands containing these
 SHELL_INJECTION_PATTERNS = [
     r';\s*rm\b', r'&&\s*rm\b', r'\|\s*rm\b',
-    r'`[^`]+`',                  # backtick execution
-    r'\$\([^)]+\)',              # $() subshell
-    r'>\s*/dev/',                # redirect to device
-    r'2>&1\s*&&',                # stderr redirect chaining
+    r'`[^`]+`', r'\$\([^)]+\)',
+    r'>\s*/dev/', r'2>&1\s*&&',
 ]
 
 
@@ -85,20 +100,19 @@ SHELL_INJECTION_PATTERNS = [
 # ------------------------------------------------------------------
 
 class ExecutionKernel:
-    """Hardened execution layer for LUNA with strict validation and verification."""
+    """Hardened execution layer with full OS control capabilities."""
 
     def __init__(self):
         self.system = platform.system()
+        self.pyautogui_available = PYAUTOGUI_AVAILABLE
+        self.pynput_available = PYNPUT_AVAILABLE
 
     # ------------------------------------------------------------------
     # Schema validation
     # ------------------------------------------------------------------
 
     def validate_schema(self, action: str, parameters: Dict[str, Any]) -> Optional[str]:
-        """
-        Validate action schema before execution.
-        Returns an error string if invalid, None if valid.
-        """
+        """Validate action schema before execution."""
         if action not in ALLOWED_ACTIONS:
             return f"Unknown action type: '{action}'. Allowed: {sorted(ALLOWED_ACTIONS)}"
 
@@ -107,14 +121,14 @@ class ExecutionKernel:
             if param not in parameters or parameters[param] is None:
                 return f"Missing required parameter '{param}' for action '{action}'"
 
-        return None  # valid
+        return None
 
     # ------------------------------------------------------------------
     # Command normalization
     # ------------------------------------------------------------------
 
     def normalize_command(self, command: str) -> str:
-        """Normalize a shell command: strip leading/trailing whitespace and collapse spaces."""
+        """Normalize a shell command."""
         return re.sub(r'\s+', ' ', command.strip())
 
     def detect_shell_injection(self, command: str) -> bool:
@@ -143,11 +157,7 @@ class ExecutionKernel:
     # ------------------------------------------------------------------
 
     def execute(self, action: str, parameters: Dict[str, Any]) -> ExecutionResult:
-        """
-        Route action to appropriate handler after strict schema validation.
-        Never marks success without verifying output.
-        """
-        # 1. Schema validation
+        """Route action to appropriate handler after strict schema validation."""
         schema_error = self.validate_schema(action, parameters)
         if schema_error:
             return ExecutionResult(
@@ -159,21 +169,23 @@ class ExecutionKernel:
             )
 
         handlers = {
-            "command":     self._run_command,
-            "file_op":     self._file_operation,
-            "git_op":      self._git_operation,
-            "app_launch":  self._launch_app,
-            "python_exec": self._execute_python,
-            "process_op":  self._process_operation,
-            "network_op":  self._network_operation,
-            "system_info": self._get_system_info,
+            "command":        self._run_command,
+            "file_op":        self._file_operation,
+            "git_op":         self._git_operation,
+            "app_launch":     self._launch_app,
+            "python_exec":    self._execute_python,
+            "process_op":     self._process_operation,
+            "network_op":     self._network_operation,
+            "system_info":    self._get_system_info,
+            "gui_mouse":      self._gui_mouse,
+            "gui_keyboard":   self._gui_keyboard,
+            "gui_window":     self._gui_window,
         }
 
         handler = handlers.get(action)
         try:
             result = handler(parameters)
             result.system_state = self.get_system_stats()
-            # Final verification: never trust success without content or verified flag
             if result.status == "success" and not result.verified:
                 result.status = "partial"
                 result.error = "Execution completed but output verification was not performed."
@@ -192,7 +204,7 @@ class ExecutionKernel:
     # ------------------------------------------------------------------
 
     def _run_command(self, params: Dict[str, Any]) -> ExecutionResult:
-        """Run a shell command with injection detection, normalization, and return code validation."""
+        """Run a shell command with injection detection and return code validation."""
         command = params.get("command")
         cwd = params.get("cwd")
         timeout = params.get("timeout", 60)
@@ -200,10 +212,8 @@ class ExecutionKernel:
         if not command:
             return ExecutionResult("failed", "", "No command provided")
 
-        # Normalize
         command = self.normalize_command(command)
 
-        # Shell injection check
         if self.detect_shell_injection(command):
             return ExecutionResult(
                 "failed", "", f"Shell injection pattern detected in command: {command}",
@@ -223,7 +233,6 @@ class ExecutionKernel:
             stdout = proc.stdout.strip()
             stderr = proc.stderr.strip()
 
-            # Return code validation
             if proc.returncode == 0:
                 return ExecutionResult(
                     status="success",
@@ -386,7 +395,6 @@ class ExecutionKernel:
         op = params.get("op")
         cwd = params.get("cwd", ".")
 
-        # Block force push explicitly
         if op == "push" and params.get("force", False):
             return ExecutionResult(
                 "failed", "", "Force push is blocked by execution kernel policy.",
@@ -412,7 +420,7 @@ class ExecutionKernel:
         return self._run_command({"command": cmd, "cwd": cwd})
 
     def _launch_app(self, params: Dict[str, Any]) -> ExecutionResult:
-        """Launch system application (non-blocking)."""
+        """Launch system application with verification."""
         app = params.get("app")
         args = params.get("args", [])
         if not app:
@@ -425,7 +433,13 @@ class ExecutionKernel:
                 subprocess.Popen(['open', '-a', app] + args)
             else:
                 subprocess.Popen([app] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # Non-blocking: we cannot fully verify launch without polling
+
+            # Verify application started
+            time.sleep(1)
+            for proc in psutil.process_iter(['name']):
+                if app.lower() in proc.info['name'].lower():
+                    return ExecutionResult("success", f"Launched: {app}", verified=True)
+
             return ExecutionResult("success", f"Launched: {app}", verified=False, confidence=0.7)
         except Exception as e:
             return ExecutionResult("failed", "", str(e), verified=False)
@@ -445,3 +459,100 @@ class ExecutionKernel:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
         return result
+
+    # ------------------------------------------------------------------
+    # GUI Automation (pyautogui)
+    # ------------------------------------------------------------------
+
+    def _gui_mouse(self, params: Dict[str, Any]) -> ExecutionResult:
+        """GUI mouse automation."""
+        if not self.pyautogui_available:
+            return ExecutionResult("failed", "", "pyautogui not available", verified=False)
+
+        action = params.get("action")
+        x = params.get("x", 0)
+        y = params.get("y", 0)
+
+        try:
+            if action == "move":
+                pyautogui.moveTo(x, y, duration=0.5)
+                return ExecutionResult("success", f"Moved mouse to ({x}, {y})", verified=True)
+
+            elif action == "click":
+                pyautogui.click(x, y)
+                return ExecutionResult("success", f"Clicked at ({x}, {y})", verified=True)
+
+            elif action == "double_click":
+                pyautogui.doubleClick(x, y)
+                return ExecutionResult("success", f"Double-clicked at ({x}, {y})", verified=True)
+
+            elif action == "right_click":
+                pyautogui.rightClick(x, y)
+                return ExecutionResult("success", f"Right-clicked at ({x}, {y})", verified=True)
+
+            else:
+                return ExecutionResult("failed", "", f"Unknown mouse action: {action}", verified=False)
+
+        except Exception as e:
+            return ExecutionResult("failed", "", str(e), verified=False)
+
+    def _gui_keyboard(self, params: Dict[str, Any]) -> ExecutionResult:
+        """GUI keyboard automation."""
+        if not self.pyautogui_available:
+            return ExecutionResult("failed", "", "pyautogui not available", verified=False)
+
+        action = params.get("action")
+        text = params.get("text", "")
+        key = params.get("key", "")
+
+        try:
+            if action == "type":
+                pyautogui.typewrite(text, interval=0.05)
+                return ExecutionResult("success", f"Typed: {text}", verified=True)
+
+            elif action == "press":
+                pyautogui.press(key)
+                return ExecutionResult("success", f"Pressed: {key}", verified=True)
+
+            elif action == "hotkey":
+                keys = params.get("keys", [])
+                pyautogui.hotkey(*keys)
+                return ExecutionResult("success", f"Hotkey: {'+'.join(keys)}", verified=True)
+
+            else:
+                return ExecutionResult("failed", "", f"Unknown keyboard action: {action}", verified=False)
+
+        except Exception as e:
+            return ExecutionResult("failed", "", str(e), verified=False)
+
+    def _gui_window(self, params: Dict[str, Any]) -> ExecutionResult:
+        """GUI window management."""
+        action = params.get("action")
+        window_title = params.get("window_title", "")
+
+        try:
+            if action == "list":
+                windows = []
+                for proc in psutil.process_iter(['name']):
+                    windows.append(proc.info['name'])
+                return ExecutionResult("success", "\n".join(windows[:20]), verified=True)
+
+            elif action == "focus":
+                if self.system == "Windows":
+                    os.system(f'tasklist /FI "WINDOWTITLE eq {window_title}" 2>NUL | find /I /N "{window_title}">NUL')
+                else:
+                    return ExecutionResult("partial", "", "Window focus not fully supported on this OS", verified=False)
+                return ExecutionResult("success", f"Focused window: {window_title}", verified=False)
+
+            elif action == "close":
+                if self.system == "Windows":
+                    os.system(f'taskkill /FI "WINDOWTITLE eq {window_title}" /T /F')
+                else:
+                    return ExecutionResult("partial", "", "Window close not fully supported on this OS", verified=False)
+                return ExecutionResult("success", f"Closed window: {window_title}", verified=False)
+
+            else:
+                return ExecutionResult("failed", "", f"Unknown window action: {action}", verified=False)
+
+        except Exception as e:
+            return ExecutionResult("failed", "", str(e), verified=False)

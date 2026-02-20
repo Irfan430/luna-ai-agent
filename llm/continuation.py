@@ -1,5 +1,5 @@
 """
-LUNA AI Agent - Token Continuation Engine v2.0
+LUNA AI Agent - Token Continuation Engine v3.0
 Author: IRFAN
 
 Intelligent recovery engine for truncated or malformed LLM responses.
@@ -9,17 +9,10 @@ partial output recovery, context compression, and step index resume.
 
 import json
 import re
+import time
 from typing import Dict, Any, List, Optional, Tuple
 
-from .provider import LLMManager, LLMResponse
-
-
-class ErrorClass:
-    TIMEOUT = "timeout"
-    RATE_LIMIT = "rate_limit"
-    CONTEXT_LIMIT = "context_limit"
-    MALFORMED_JSON = "malformed_json"
-    UNKNOWN = "unknown"
+from .provider import LLMManager, LLMResponse, LLMErrorClass
 
 
 class ContinuationEngine:
@@ -29,6 +22,7 @@ class ContinuationEngine:
         self.llm_manager = llm_manager
         self.config = config
         self.max_retries = config.get('llm', {}).get('continuation', {}).get('max_retries', 3)
+        self.continuation_prompt = config.get('prompts', {}).get('continuation', "Please continue your previous response exactly where you left off.")
 
     # ------------------------------------------------------------------
     # Detection helpers
@@ -41,11 +35,17 @@ class ContinuationEngine:
         close_braces = text.count('}')
         open_brackets = text.count('[')
         close_brackets = text.count(']')
+        
         if open_braces > close_braces or open_brackets > close_brackets:
             return True
+            
+        # Check if it ends abruptly (e.g., in the middle of a key or value)
+        if re.search(r'[:,"\[\{]\s*$', text):
+            return True
+            
         truncation_indicators = ["...", "truncated", "continued"]
         for indicator in truncation_indicators:
-            if indicator in text.lower():
+            if indicator in text.lower()[-20:]: # Only check the end
                 return True
         return False
 
@@ -56,17 +56,6 @@ class ContinuationEngine:
         if self.is_incomplete_json(response.content):
             return True
         return False
-
-    def classify_error(self, error: Exception) -> str:
-        """Classify the type of LLM error for targeted recovery."""
-        msg = str(error).lower()
-        if "timeout" in msg:
-            return ErrorClass.TIMEOUT
-        if "rate limit" in msg or "429" in msg:
-            return ErrorClass.RATE_LIMIT
-        if "context" in msg or "token" in msg or "length" in msg:
-            return ErrorClass.CONTEXT_LIMIT
-        return ErrorClass.UNKNOWN
 
     # ------------------------------------------------------------------
     # Partial output recovery
@@ -115,7 +104,6 @@ class ContinuationEngine:
         """
         Compress conversation context to reduce token pressure.
         Retains system messages, the original goal, and the last few exchanges.
-        Injects a summary marker to indicate where compression occurred.
         """
         system_messages = [m for m in messages if m["role"] == "system"]
         user_messages = [m for m in messages if m["role"] != "system"]
@@ -155,7 +143,7 @@ class ContinuationEngine:
                 f"[CONTINUATION REQUEST — Step Index: {step_index}]\n"
                 f"The previous response was truncated or incomplete.\n"
                 f"Partial output received:\n{partial_content}\n\n"
-                "Please continue from exactly where the output was cut off.\n"
+                f"{self.continuation_prompt}\n"
                 "If the output was JSON, complete the JSON structure properly.\n"
                 "Do NOT restart from the beginning. Resume from the last valid state.\n"
                 "Output ONLY the continuation — no preamble."
@@ -196,14 +184,7 @@ class ContinuationEngine:
                 retry_count += 1
                 step_index += 1
 
-                if retry_count >= self.max_retries:
-                    print(f"[ContinuationEngine] Max retries ({self.max_retries}) reached at step {step_index}.")
-                    # Attempt partial recovery before giving up
-                    recovered = self.recover_partial_output(accumulated_response)
-                    if recovered:
-                        print(f"[ContinuationEngine] Partial recovery succeeded at step {step_index}.")
-                        return json.dumps(recovered)
-                    return accumulated_response
+                print(f"[ContinuationEngine] Response truncated. Requesting continuation {retry_count}/{self.max_retries}...")
 
                 # Rebuild prompt with summarized state for intelligent resume
                 messages = self.rebuild_prompt_with_state(messages, response.content, step_index)
@@ -214,25 +195,24 @@ class ContinuationEngine:
                     messages = self.compress_context(messages, step_index)
 
             except Exception as e:
-                error_class = self.classify_error(e)
-                print(f"[ContinuationEngine] Error ({error_class}): {e}")
-
-                if error_class == ErrorClass.CONTEXT_LIMIT:
+                # Error handling is now delegated to LLMManager, but we catch it here for continuation logic
+                msg = str(e).lower()
+                if "context" in msg or "token" in msg or "length" in msg:
                     print("[ContinuationEngine] Context limit hit. Compressing context and retrying.")
                     messages = self.compress_context(messages, step_index)
                     retry_count += 1
                     continue
-
-                if error_class == ErrorClass.RATE_LIMIT:
+                
+                if "rate limit" in msg:
                     print("[ContinuationEngine] Rate limit hit. Waiting 5 seconds before retry.")
-                    import time
                     time.sleep(5)
                     retry_count += 1
                     continue
 
-                # For timeout or unknown errors, return what we have
+                # For other errors, return what we have if any
                 if accumulated_response:
                     return accumulated_response
                 raise
 
+        print(f"[ContinuationEngine] Max retries ({self.max_retries}) reached. Returning accumulated response.")
         return accumulated_response
