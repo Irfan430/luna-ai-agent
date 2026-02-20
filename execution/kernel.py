@@ -1,8 +1,13 @@
-"""
-LUNA AI Agent - Advanced Execution Kernel (AEK) v3.0
+"""LUNA AI Agent - Advanced Execution Kernel (AEK) v4.0
 Author: IRFAN
 
-Hardened deterministic execution layer with full OS control:
+Phase 4 Execution Verification Upgrades:
+  - _launch_app: verify process started with retry, return error+reason on failure.
+  - _run_command: explicit exit code in error, never fake success.
+  - _process_operation: kill verification — confirm process no longer running.
+  - All handlers: never return verified=True unless outcome is confirmed.
+
+Hardened deterministic execution layer with full OS control::
   - Shell command execution with injection detection
   - File operations with verification
   - Git automation
@@ -331,7 +336,20 @@ class ExecutionKernel:
                 if pid:
                     proc = psutil.Process(pid)
                     proc.terminate()
-                    return ExecutionResult("success", f"Terminated process {pid}", verified=True)
+                    # Phase 4 Fix: verify process is no longer running
+                    time.sleep(0.5)
+                    still_running = psutil.pid_exists(pid)
+                    if still_running:
+                        proc.kill()  # Force kill
+                        time.sleep(0.3)
+                        still_running = psutil.pid_exists(pid)
+                    verified_kill = not still_running
+                    return ExecutionResult(
+                        "success" if verified_kill else "failed",
+                        f"Terminated process {pid}" if verified_kill else "",
+                        "" if verified_kill else f"Process {pid} still running after terminate+kill",
+                        verified=verified_kill,
+                    )
                 elif name:
                     count = 0
                     for proc in psutil.process_iter(['name']):
@@ -434,13 +452,29 @@ class ExecutionKernel:
             else:
                 subprocess.Popen([app] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            # Verify application started
-            time.sleep(1)
-            for proc in psutil.process_iter(['name']):
-                if app.lower() in proc.info['name'].lower():
-                    return ExecutionResult("success", f"Launched: {app}", verified=True)
-
-            return ExecutionResult("success", f"Launched: {app}", verified=False, confidence=0.7)
+            # Phase 4 Fix: verify process started with retry
+            for attempt in range(3):
+                time.sleep(0.8)
+                for proc in psutil.process_iter(['name']):
+                    try:
+                        if app.lower() in (proc.info.get('name') or '').lower():
+                            return ExecutionResult(
+                                "success",
+                                f"Launched and verified: {app} (PID: {proc.pid})",
+                                verified=True,
+                                confidence=1.0,
+                            )
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+            # Process not found after retries — report failure honestly
+            return ExecutionResult(
+                "failed",
+                "",
+                f"App '{app}' launched but process could not be verified after 3 attempts. "
+                "It may have exited immediately or the process name differs.",
+                verified=False,
+                confidence=0.3,
+            )
         except Exception as e:
             return ExecutionResult("failed", "", str(e), verified=False)
 

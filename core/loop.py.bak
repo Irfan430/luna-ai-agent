@@ -1,12 +1,6 @@
 """
-LUNA AI Agent - Cognitive Loop 4.0
+LUNA AI Agent - Cognitive Loop 3.0
 Author: IRFAN
-
-Phase 1 Stabilization Fixes:
-  1. Removed unsafe .format() on prompt strings — uses safe .replace() templating only.
-  2. Schema validator: 'action' field is NOT required when mode == 'conversation'.
-  3. Unified LLM routing layer: classifies input before entering cognitive loop.
-  4. JSON repair fallback: extract first valid block, retry once, fallback to conversation.
 
 Advanced iterative control loop with multi-step reasoning and self-healing.
 Implements: explicit AgentState, iteration counter, stagnation detection,
@@ -23,7 +17,6 @@ from typing import Dict, Any, List, Optional
 
 from llm.provider import LLMManager
 from llm.continuation import ContinuationEngine
-from llm.router import LLMRouter, repair_and_parse_json
 from execution.kernel import ExecutionKernel
 from risk.engine import RiskEngine
 from memory.system import MemorySystem
@@ -74,22 +67,10 @@ class CognitiveLoop:
         self.execution_kernel = ExecutionKernel()
         self.risk_engine = RiskEngine(config)
         self.memory_system = MemorySystem(config)
-        self.router = LLMRouter(self.llm_manager)
         self.max_iterations = config.get("cognitive", {}).get("max_iterations", 5)
         self.max_repair_attempts = config.get("cognitive", {}).get("max_repair_attempts", 3)
         self.stagnation_threshold = config.get("cognitive", {}).get("stagnation_threshold", 3)
         self.prompts = self._load_prompts()
-
-    def _safe_fill_prompt(self, template: str, replacements: Dict[str, str]) -> str:
-        """
-        Safe prompt templating using explicit .replace() calls.
-        Avoids KeyError from .format() when prompt contains JSON braces {}.
-        All placeholder tokens use {{KEY}} syntax.
-        """
-        result = template
-        for key, value in replacements.items():
-            result = result.replace("{{" + key + "}}", value)
-        return result
 
     def _load_prompts(self) -> Dict[str, str]:
         """Load modular prompt packs from the prompts directory."""
@@ -116,31 +97,8 @@ class CognitiveLoop:
     def run(self, goal: str) -> TaskResult:
         """
         Run the cognitive loop to achieve a goal with self-healing.
-
-        Phase 1 Fix: Route input through LLMRouter first.
-        - If mode == 'conversation' -> return immediately, no planning.
-        - If mode == 'action' or 'plan' -> enter cognitive loop.
+        Returns a canonical TaskResult object.
         """
-        # Step 0: Route the input
-        routing = self.router.route(goal)
-        mode = routing.get("mode", "plan")
-
-        if mode == "conversation":
-            response_text = routing.get("response", "")
-            if not response_text:
-                response_text = "Understood."
-            print(f"\nLUNA: {response_text}")
-            return TaskResult(
-                status="success",
-                content=response_text,
-                error="",
-                execution_used=False,
-                confidence=1.0,
-                risk_level="low",
-                verified=True,
-            )
-
-        # Action or plan mode — enter cognitive loop
         state = AgentState(goal)
         self.memory_system.clear_short_term()
         self.memory_system.set_goal(goal)
@@ -242,16 +200,10 @@ class CognitiveLoop:
                 }
             }
             
-            # Phase 1 Fix: safe templating — no .format() on prompt strings
-            planning_template = self.prompts.get("planning", "Plan the next steps.")
-            planning_prompt = self._safe_fill_prompt(
-                planning_template,
-                {
-                    "STATE": json.dumps(state.to_dict(), indent=2),
-                    "GOAL": state.goal,
-                    "MEMORY": self.memory_system.long_term or "No long-term memory yet.",
-                },
-            )
+            planning_prompt = self.prompts.get("planning", "Plan the next steps.")
+            planning_prompt = planning_prompt.replace("{{STATE}}", json.dumps(state.to_dict(), indent=2))
+            planning_prompt = planning_prompt.replace("{{GOAL}}", state.goal)
+            planning_prompt = planning_prompt.replace("{{MEMORY}}", self.memory_system.long_term)
 
             plan_messages = [
                 {"role": "system", "content": self.prompts.get("identity", "You are LUNA AI Agent.")},
@@ -262,11 +214,11 @@ class CognitiveLoop:
             self.memory_system.add_short_term("assistant", plan_response)
 
             try:
-                # Phase 1 Fix: use repair_and_parse_json with fallback
-                success, raw_plan = repair_and_parse_json(plan_response)
-                if not success or not raw_plan:
-                    raise ValueError("No valid JSON found in plan response after repair attempt.")
-
+                raw_plan = self.llm_manager.get_provider().extract_json(plan_response)
+                if not raw_plan:
+                    raise ValueError("No JSON found in plan response")
+                
+                # Use sanitation layer
                 is_valid, sanitized_plan = self.llm_manager.get_provider().validate_and_sanitize(raw_plan, plan_schema)
                 
                 if is_valid:
@@ -284,16 +236,13 @@ class CognitiveLoop:
         """Step 4: Validate schema and assess risk for the next action."""
         print("Validating schema and assessing risk...")
 
-        # Phase 1 Fix: action is required for execution steps
+        # Action schema for sanitation
         action_schema = {
             "required": ["action", "parameters"],
             "optional": {
                 "thought": "Executing planned action",
-                "risk_level": "low",
-                "description": "",
-                "expected_outcome": "",
-                "risk_estimate": "low",
-            },
+                "risk_level": "low"
+            }
         }
 
         # Use sanitation layer
@@ -365,16 +314,11 @@ class CognitiveLoop:
             }
         }
         
-        reflection_template = self.prompts.get("reflection", "")
-        reflection_prompt = self._safe_fill_prompt(
-            reflection_template,
-            {
-                "STATE": json.dumps(state.to_dict(), indent=2),
-                "GOAL": state.goal,
-                "ACTION": json.dumps(state.last_action, indent=2) if state.last_action else "None",
-                "RESULT": json.dumps(result.to_dict(), indent=2),
-            },
-        )
+        reflection_prompt = self.prompts.get("reflection", "")
+        reflection_prompt = reflection_prompt.replace("{{STATE}}", json.dumps(state.to_dict(), indent=2))
+        reflection_prompt = reflection_prompt.replace("{{GOAL}}", state.goal)
+        reflection_prompt = reflection_prompt.replace("{{ACTION}}", json.dumps(state.last_action, indent=2) if state.last_action else "None")
+        reflection_prompt = reflection_prompt.replace("{{RESULT}}", json.dumps(result.to_dict(), indent=2))
 
         reflect_messages = [
             {"role": "system", "content": self.prompts.get("identity", "")},
@@ -385,13 +329,9 @@ class CognitiveLoop:
         self.memory_system.add_short_term("assistant", reflect_response)
 
         try:
-            success, raw_reflect = repair_and_parse_json(reflect_response)
-            if success and raw_reflect:
-                is_valid, sanitized_reflect = (
-                    self.llm_manager.get_provider().validate_and_sanitize(
-                        raw_reflect, reflect_schema
-                    )
-                )
+            raw_reflect = self.llm_manager.get_provider().extract_json(reflect_response)
+            if raw_reflect:
+                is_valid, sanitized_reflect = self.llm_manager.get_provider().validate_and_sanitize(raw_reflect, reflect_schema)
                 if is_valid:
                     if sanitized_reflect.get("is_complete"):
                         state.is_complete = True

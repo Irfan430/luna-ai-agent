@@ -63,3 +63,14 @@ gui:
 voice:
   enabled: false
   language: en
+  wake_word: "luna"
+  acknowledgment_enabled: true
+  acknowledgment_style: "hmm"   # hmm | yes | listening | default
+  passive_listening: true
+  silence_timeout_seconds: 5
+  vosk_model_path: "vosk-model-small-en-us"  # Download: https://alphacephei.com/vosk/models
+
+# Memory Configuration
+memory:
+  max_tokens: 4000
+  compression_threshold: 0.75
