@@ -10,5 +10,29 @@
     "content": "I'm currently running version 1.0.0, but I'm always learning and updating with each interaction!",
     "timestamp": "2026-02-20T11:42:38.331606",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello",
+    "timestamp": "2026-02-20T11:52:22.092680",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Hello! How can I assist you today?",
+    "timestamp": "2026-02-20T11:52:22.092966",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello",
+    "timestamp": "2026-02-20T11:52:50.431631",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Hello! How can I assist you today?",
+    "timestamp": "2026-02-20T11:52:50.431943",
+    "is_voice": false
   }
 ]

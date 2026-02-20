@@ -80,7 +80,11 @@ class VoiceEngine:
         self._tts_lock = threading.Lock()
 
         if self.enabled:
-            self._init_tts()
+            try:
+                self._init_tts()
+            except Exception as e:
+                logger.error(f"Voice initialization failed: {e}")
+                self.enabled = False
 
     def _init_tts(self):
         if not TTS_AVAILABLE: return

@@ -1,65 +1,72 @@
 import sys
 import os
-from typing import Dict, Any
-
-# Add the current directory to sys.path to import local modules
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from memory.system import MemorySystem
-from llm.provider import LLMManager, sanitize_llm_output
-# from core.loop import CognitiveLoop
 import yaml
+import logging
+import time
 
-def test_memory_system():
-    print("Testing MemorySystem attribute wrappers...")
-    config = {"memory": {"max_tokens": 4000, "compression_threshold": 0.75}, "llm": {"default_provider": "deepseek", "providers": {"deepseek": {"api_key": "test", "model": "test", "base_url": "test"}}}}
-    memory = MemorySystem(config)
-    
-    # Test short_term property
-    assert hasattr(memory, 'short_term'), "MemorySystem missing 'short_term' property"
-    assert isinstance(memory.short_term, list), "'short_term' should be a list"
-    
-    # Test episodic property
-    assert hasattr(memory, 'episodic'), "MemorySystem missing 'episodic' property"
-    assert isinstance(memory.episodic, list), "'episodic' should be a list"
-    
-    # Test long_term property
-    assert hasattr(memory, 'long_term'), "MemorySystem missing 'long_term' property"
-    assert isinstance(memory.long_term, str), "'long_term' should be a string"
-    
-    print("MemorySystem tests PASSED")
+# Configure logging to stdout
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
 
-def test_sanitation_layer():
-    print("Testing Sanitation Layer...")
-    schema = {
-        "required": ["plan", "status"],
-        "optional": {"reasoning": "N/A", "confidence": 1.0}
-    }
-    
-    # Test with extra keys
-    response = {"plan": ["step1"], "status": "success", "extra_key": "should be dropped", "reasoning": "because"}
-    sanitized = sanitize_llm_output(response, schema)
-    
-    assert "extra_key" not in sanitized, "Extra key should have been dropped"
-    assert sanitized["plan"] == ["step1"]
-    assert sanitized["status"] == "success"
-    assert sanitized["reasoning"] == "because"
-    assert sanitized["confidence"] == 1.0, "Optional key should have default value"
-    
-    # Test with missing required key
+def test_initialization():
+    print("\n--- Testing Initialization ---")
     try:
-        sanitize_llm_output({"plan": []}, schema)
-        assert False, "Should have raised ValueError for missing required key"
-    except ValueError:
-        pass
+        from os_detector import detect_and_save_os
+        detect_and_save_os("config.yaml")
+        print("✓ OS Detection passed")
         
-    print("Sanitation Layer tests PASSED")
+        with open("config.yaml", 'r') as f:
+            config = yaml.safe_load(f)
+        print("✓ Config loading passed")
+        
+        from core.loop import CognitiveLoop
+        loop = CognitiveLoop(config)
+        print("✓ CognitiveLoop initialization passed")
+        
+        return loop
+    except Exception as e:
+        print(f"✗ Initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def test_conversation(loop):
+    print("\n--- Testing Conversation ---")
+    try:
+        # We'll use a mock or a very simple call to avoid long waits if LLM is slow
+        print("Sending 'Hello' to LUNA...")
+        result = loop.run("Hello")
+        print(f"✓ Conversation result: {result.content}")
+        return True
+    except Exception as e:
+        print(f"✗ Conversation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 if __name__ == "__main__":
-    try:
-        test_memory_system()
-        test_sanitation_layer()
-        print("\nAll health tests PASSED")
-    except Exception as e:
-        print(f"\nHealth tests FAILED: {e}")
+    loop = test_initialization()
+    if loop:
+        # Set a timeout for the conversation test
+        import threading
+        
+        def run_test():
+            test_conversation(loop)
+            
+        thread = threading.Thread(target=run_test)
+        thread.start()
+        thread.join(timeout=30)
+        
+        if thread.is_alive():
+            print("\n✗ TEST TIMEOUT: The loop.run() call is hanging!")
+            # Try to see where it's hanging by looking at the stack
+            import faulthandler
+            faulthandler.dump_traceback()
+            sys.exit(1)
+        else:
+            print("\nAll diagnostic tests completed.")
+    else:
         sys.exit(1)

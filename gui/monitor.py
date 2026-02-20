@@ -30,6 +30,7 @@ from PyQt6.QtGui import QFont, QColor, QIcon, QAction
 
 from core.loop import CognitiveLoop
 from core.task_result import TaskResult
+from voice.engine import VoiceEngine
 
 logger = logging.getLogger("luna.gui.monitor")
 
@@ -84,10 +85,15 @@ class MonitorWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.loop = CognitiveLoop(config)
+        self.voice_engine = VoiceEngine(config)
         self.worker = None
         self.setStyleSheet(DARK_STYLE)
         self.init_ui()
         self.init_tray()
+        
+        # Start passive listening in a separate thread if enabled
+        if self.voice_engine.enabled:
+            QTimer.singleShot(1000, self.start_voice_system)
         
         self.stats_timer = QTimer()
         self.stats_timer.timeout.connect(self.update_stats)
@@ -257,6 +263,16 @@ class MonitorWindow(QMainWindow):
         self.action_btn.setText("Send")
         self.action_btn.setStyleSheet("background-color: #007acc; color: white; padding: 8px 20px;")
 
+    def start_voice_system(self):
+        self.voice_engine.start_passive_listening(self.handle_voice_command)
+        self.voice_status_lbl.setText("Voice: Passive Mode")
+        self.voice_status_lbl.setStyleSheet("color: gray;")
+
+    def handle_voice_command(self, command):
+        self.chat_display.append(f"<b>YOU (voice):</b> {command}")
+        self.input_field.setText(command)
+        self.send_goal()
+
     def toggle_voice(self, checked):
         # Phase 6: Voice UI Improvements
         if checked:
@@ -264,6 +280,11 @@ class MonitorWindow(QMainWindow):
             self.voice_status_lbl.setText("Voice: Listening...")
             self.voice_status_lbl.setStyleSheet("color: #28a745;")
             self.chat_display.append("<i>Voice system: Active Listening...</i>")
+            # Trigger active listen
+            cmd = self.voice_engine.listen()
+            if cmd:
+                self.handle_voice_command(cmd)
+            self.voice_btn.setChecked(False)
         else:
             self.voice_btn.setStyleSheet("")
             self.voice_status_lbl.setText("Voice: Passive Mode")
