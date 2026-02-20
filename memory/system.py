@@ -29,6 +29,21 @@ class MemorySystem:
         self.max_tokens = config.get("memory", {}).get("max_tokens", 4000)
         self.compression_threshold = config.get("memory", {}).get("compression_threshold", 0.75) # % of max_tokens
 
+    @property
+    def short_term(self):
+        """Public interface for short-term memory."""
+        return self.short_term_memory
+
+    @property
+    def episodic(self):
+        """Public interface for episodic memory."""
+        return self.episodic_memory
+
+    @property
+    def long_term(self):
+        """Public interface for long-term memory."""
+        return self.compressed_long_term_memory
+
     def set_goal(self, goal: str):
         """Set the current goal for the memory system."""
         self.goal = goal

@@ -8,7 +8,7 @@ llm:
   
   providers:
     deepseek:
-      api_key: "sk-15b0ddf886024792901ccc7123501623"
+      api_key: "sk-3c8e58684f6f4832bef0da6f73610ba6"
       model: "deepseek-chat"
       base_url: "https://api.deepseek.com"
     

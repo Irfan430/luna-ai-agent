@@ -1,10 +1,10 @@
 """
-LUNA AI Agent - LLM Provider Abstraction v2.0
+LUNA AI Agent - LLM Provider Abstraction v3.0
 Author: IRFAN
 
 Hardened provider layer with:
   - Strict structured JSON enforcement
-  - Automatic schema validation
+  - Automatic schema validation & sanitation
   - Error classification (timeout, rate limit, context limit)
   - Single mode enforcement
   - Multi mode fallback logic with provider switch logging
@@ -75,6 +75,37 @@ class LLMResponse:
 
 
 # ------------------------------------------------------------------
+# Sanitation Layer
+# ------------------------------------------------------------------
+
+def sanitize_llm_output(response_dict: Dict[str, Any], expected_schema: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize LLM output by dropping unknown keys and filling missing optional keys.
+    Raises ValueError for missing required keys.
+    """
+    sanitized = {}
+    required_keys = expected_schema.get("required", [])
+    optional_keys = expected_schema.get("optional", {})
+
+    # 1. Drop unknown keys and keep only expected ones
+    for key in required_keys:
+        if key not in response_dict:
+            logger.error(f"[Sanitation] Missing required key: '{key}'")
+            raise ValueError(f"Missing required key: '{key}'")
+        sanitized[key] = response_dict[key]
+
+    for key, default_value in optional_keys.items():
+        sanitized[key] = response_dict.get(key, default_value)
+
+    # Log if there were extra keys dropped
+    extra_keys = set(response_dict.keys()) - set(required_keys) - set(optional_keys.keys())
+    if extra_keys:
+        logger.info(f"[Sanitation] Dropped unknown keys: {extra_keys}")
+
+    return sanitized
+
+
+# ------------------------------------------------------------------
 # Abstract provider interface
 # ------------------------------------------------------------------
 
@@ -136,27 +167,16 @@ class LLMProvider(ABC):
         )
         return None
 
-    def validate_action_schema(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+    def validate_and_sanitize(self, data: Dict[str, Any], schema: Dict[str, Any]) -> Tuple[bool, Any]:
         """
-        Validate that extracted JSON conforms to the action schema.
-        Returns (is_valid, error_message).
+        Validate and sanitize extracted JSON against a schema.
+        Returns (is_valid, sanitized_data_or_error_msg).
         """
-        required_fields = ["action", "parameters"]
-        for field in required_fields:
-            if field not in data:
-                return False, f"Missing required field: '{field}'"
-
-        valid_actions = {
-            "command", "file_op", "git_op", "app_launch",
-            "python_exec", "process_op", "network_op", "system_info"
-        }
-        if data["action"] not in valid_actions:
-            return False, f"Invalid action: '{data['action']}'. Must be one of {sorted(valid_actions)}"
-
-        if not isinstance(data["parameters"], dict):
-            return False, f"'parameters' must be a dict, got {type(data['parameters']).__name__}"
-
-        return True, ""
+        try:
+            sanitized = sanitize_llm_output(data, schema)
+            return True, sanitized
+        except ValueError as e:
+            return False, str(e)
 
 
 # ------------------------------------------------------------------
