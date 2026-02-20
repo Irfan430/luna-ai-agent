@@ -1,12 +1,13 @@
 """
-LUNA AI Agent - Unified LLM Brain & Routing Layer
+LUNA AI Agent - Intent Routing Layer v6.0
 Author: IRFAN
 
-Phase 1 Architectural Stabilization:
-  - Unified LLM Brain contract: always returns mode, confidence, response, and steps.
-  - Routing modes: conversation, action, plan.
+Phase 1 Intent Routing Fix:
+  - Classify request into: conversation, direct_action, complex_plan.
+  - conversation → no planning loop.
+  - direct_action → single execution pass.
+  - complex_plan → iterative cognitive loop.
   - JSON repair fallback (1 retry max).
-  - No 'action' key required if mode == conversation.
 """
 
 import json
@@ -26,28 +27,30 @@ Your job is to classify the user's input and decide the execution mode.
 
 Modes:
 - "conversation": For greetings, simple questions, or general talk.
-- "action": For a single, immediate OS/file/app task.
-- "plan": For complex, multi-step goals.
+- "direct_action": For a single, immediate OS/file/app task (e.g., "open chrome", "create file x.txt").
+- "complex_plan": For complex, multi-step goals requiring reasoning.
 
 Rules:
-- If mode is "conversation", provide a direct "response". "steps" can be empty.
-- If mode is "action" or "plan", "steps" must contain the structured actions.
-- NEVER enter planning for simple greetings.
+- If mode is "conversation", provide a direct "response".
+- If mode is "direct_action", provide the "action" and "parameters".
+- If mode is "complex_plan", provide the initial "steps".
 
 Output ONLY valid JSON.
 
 Format:
 {
-  "mode": "conversation | action | plan",
+  "mode": "conversation | direct_action | complex_plan",
   "confidence": 0.0-1.0,
-  "response": "string",
+  "response": "string (for conversation)",
+  "action": "string (for direct_action)",
+  "parameters": {} (for direct_action),
   "steps": [
     {
       "action": "string",
       "parameters": {},
       "description": "string"
     }
-  ]
+  ] (for complex_plan)
 }
 """
 
@@ -113,25 +116,27 @@ class LLMRouter:
         messages.append({"role": "user", "content": user_input})
 
         try:
-            response = self.llm_manager.call(messages, temperature=0.2)
+            response = self.llm_manager.call(messages, temperature=0.1)
             raw_text = response.content
 
             success, parsed = repair_and_parse_json(raw_text)
 
             if success and parsed:
-                # Ensure all required keys exist per contract
                 return {
                     "mode": parsed.get("mode", "conversation"),
                     "confidence": float(parsed.get("confidence", 0.0)),
                     "response": parsed.get("response", ""),
+                    "action": parsed.get("action", ""),
+                    "parameters": parsed.get("parameters", {}),
                     "steps": parsed.get("steps", []),
                 }
 
-            # Fallback if parsing fails after repair
             return {
                 "mode": "conversation",
                 "confidence": 0.5,
                 "response": raw_text.strip() if raw_text else "I encountered an error processing that.",
+                "action": "",
+                "parameters": {},
                 "steps": [],
             }
 
@@ -141,5 +146,7 @@ class LLMRouter:
                 "mode": "conversation",
                 "confidence": 0.0,
                 "response": "System error in cognitive routing.",
+                "action": "",
+                "parameters": {},
                 "steps": [],
             }

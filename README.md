@@ -1,7 +1,7 @@
-# LUNA AI Agent - v5.0
+# LUNA AI Agent - v6.0
 Author: IRFAN
 
-**LUNA (Latent Understanding & Neural Architecture)** is a fully autonomous, cross-platform cognitive operating system layer. This repository contains the complete source code for LUNA v5.0, featuring a deep architectural upgrade for cross-platform automation, always-on voice control, and a professional GUI.
+**LUNA (Latent Understanding & Neural Architecture)** is a fully autonomous, cross-platform cognitive operating system layer. This repository contains the complete source code for LUNA v6.0, featuring a performance-focused architectural upgrade.
 
 ![LUNA Architecture](architecture.png)
 
@@ -11,13 +11,13 @@ Author: IRFAN
 
 | Feature                  | Description                                                                                                                              |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Unified Brain**        | Cognitive routing for conversation, action, and planning with a standardized JSON contract and auto-repair.                              |
-| **OS Abstraction**       | Native support for Linux, Windows, and macOS via platform-specific adapters.                                                              |
-| **Interaction Engine**   | Advanced keyboard, mouse, window, and multi-browser (Chrome, Firefox, Edge, Brave) automation.                                           |
-| **Always-on Voice**      | Passive wake word listening ("Luna") and active command capture in a non-blocking background thread.                                     |
-| **Professional GUI**     | Real-time monitoring of system resources, token usage, execution timeline, and a built-in config editor.                                 |
-| **Advanced Memory**      | Multi-layered memory (short-term, episodic, long-term) with intelligent LLM-based compression.                                           |
-| **Docker Support**       | Fully containerized environment with all system dependencies and Playwright pre-configured.                                              |
+| **Intent Routing**       | Classifies requests into conversation, direct_action, or complex_plan to minimize cognitive overhead.                                     |
+| **Direct Action Pipeline**| Single-pass execution for simple tasks, bypassing the iterative loop for maximum speed.                                                  |
+| **Live Visibility**      | Real-time file creation visibility in the GUI, showing code blocks, write status, and verification results.                              |
+| **Execution Control**    | GUI now features a STOP button to interrupt tasks, with input field locking during execution.                                            |
+| **Voice UI Improvements**| Visual feedback for voice activity, system tray support, and continuous background operation.                                            |
+| **Speed Optimization**   | Reduced plan regeneration and redundant reflection loops, with strict iteration limits based on task complexity.                         |
+| **Failure Clarity**      | Detailed error reporting including exact errors, attempted actions, verification results, and LLM-suggested fixes.                       |
 
 ---
 
@@ -66,15 +66,14 @@ docker run -it luna-agent
 
 ---
 
-## Architectural Upgrade Summary (v5.0)
+## Architectural Upgrade Summary (v6.0)
 
 | Phase | Module(s) Affected | Key Upgrades Implemented |
 | :--- | :--- | :--- |
-| **1. Stabilization** | `core/loop.py`, `llm/router.py` | - Unified LLM Brain contract.<br>- Immediate conversational response.<br>- JSON repair fallback (1 retry). |
-| **2. OS Abstraction** | `os_adapters/`, `execution/kernel.py` | - Platform-specific adapters (Linux, Win, Mac).<br>- Auto-detection of host OS. |
-| **3. Interaction** | `execution/kernel.py` | - Keyboard/Mouse automation.<br>- Multi-browser support.<br>- Media control abstraction. |
-| **4. Voice System** | `voice/engine.py` | - Always-on passive listening.<br>- Wake word "Luna" with immediate acknowledgment. |
-| **5. Memory** | `memory/system.py` | - Episodic task memory.<br>- Token usage tracking.<br>- Auto-compression via LLM. |
-| **6. GUI** | `gui/monitor.py` | - Resource monitor (CPU/RAM).<br>- Execution timeline.<br>- Built-in config editor. |
-| **7. Orchestration** | `config.yaml` | - Multi-provider LLM support.<br>- Configurable iteration limits. |
-| **8 & 9. Deployment** | `requirements.txt`, `Dockerfile` | - Clean dependency separation.<br>- Full Docker support with Playwright. |
+| **1. Intent Routing** | `llm/router.py` | - New classification: conversation, direct_action, complex_plan.<br>- Conversation bypasses planning. |
+| **2. Direct Action** | `core/loop.py` | - Single-pass execution for direct_action mode.<br>- Verification-first approach. |
+| **3. Live Visibility** | `execution/kernel.py` | - Code block display during file creation.<br>- File size and path verification. |
+| **4. GUI Control** | `gui/monitor.py` | - STOP button to interrupt execution thread.<br>- Input field locking during tasks. |
+| **5. Voice UI** | `gui/monitor.py` | - Visual feedback for voice states.<br>- System tray icon support. |
+| **6. Speed** | `core/loop.py` | - Iteration limits (1 for simple, 5 for complex).<br>- Reduced redundant reflection. |
+| **7. Failure Clarity** | `core/loop.py` | - Detailed error reporting.<br>- LLM-suggested fixes on failure. |

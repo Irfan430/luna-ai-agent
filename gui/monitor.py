@@ -1,17 +1,12 @@
 """
-LUNA AI Agent - Professional GUI v5.0
+LUNA AI Agent - Professional GUI v6.0
 Author: IRFAN
 
-Phase 6: Professional GUI
-  - Chat panel with proper SEND button.
-  - Execution timeline panel.
-  - Process monitor.
-  - Resource monitor (CPU/RAM).
-  - Config editor panel.
-  - Active LLM provider display.
-  - Risk level indicator.
-  - Token usage display.
-  - Voice control button.
+Phase 4 & 5: GUI Execution Control & Voice UI
+  - While task running: Send button becomes STOP, Disable input field.
+  - STOP button interrupts execution thread.
+  - Voice button: Visually change when active, Show "Listening...", "Passive Mode".
+  - System tray icon when minimized.
 """
 
 import sys
@@ -27,10 +22,10 @@ from PyQt6.QtWidgets import (
     QTextEdit, QLineEdit, QPushButton, QLabel, QProgressBar,
     QTabWidget, QListWidget, QFrame, QSplitter, QScrollArea,
     QTableWidget, QTableWidgetItem, QHeaderView, QStatusBar,
-    QGroupBox, QCheckBox
+    QGroupBox, QCheckBox, QSystemTrayIcon, QMenu
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
-from PyQt6.QtGui import QFont, QColor, QIcon
+from PyQt6.QtGui import QFont, QColor, QIcon, QAction
 
 from core.loop import CognitiveLoop
 from core.task_result import TaskResult
@@ -66,27 +61,38 @@ class AgentWorker(QThread):
         super().__init__()
         self.loop = loop
         self.goal = goal
+        self._is_running = True
+
     def run(self):
         try:
             result = self.loop.run(self.goal)
-            self.finished.emit(result)
+            if self._is_running:
+                self.finished.emit(result)
         except Exception as e:
-            self.finished.emit(TaskResult.failure(str(e)))
+            if self._is_running:
+                self.finished.emit(TaskResult.failure(str(e)))
+
+    def stop(self):
+        self._is_running = False
+        self.terminate()
+        self.wait()
 
 class MonitorWindow(QMainWindow):
     def __init__(self, config: dict):
         super().__init__()
         self.config = config
         self.loop = CognitiveLoop(config)
+        self.worker = None
         self.setStyleSheet(DARK_STYLE)
         self.init_ui()
+        self.init_tray()
         
         self.stats_timer = QTimer()
         self.stats_timer.timeout.connect(self.update_stats)
         self.stats_timer.start(2000)
 
     def init_ui(self):
-        self.setWindowTitle("LUNA 5.0 — COGNITIVE OPERATING SYSTEM")
+        self.setWindowTitle("LUNA 6.0 — COGNITIVE OPERATING SYSTEM")
         self.setMinimumSize(1200, 800)
         
         central = QWidget()
@@ -108,13 +114,19 @@ class MonitorWindow(QMainWindow):
         input_layout = QHBoxLayout()
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("Type your goal...")
-        self.input_field.returnPressed.connect(self.send_goal)
-        self.send_btn = QPushButton("Send")
-        self.send_btn.clicked.connect(self.send_goal)
+        self.input_field.returnPressed.connect(self.handle_action)
+        
+        self.action_btn = QPushButton("Send")
+        self.action_btn.clicked.connect(self.handle_action)
+        self.action_btn.setStyleSheet("background-color: #007acc; color: white; padding: 8px 20px;")
+        
         self.voice_btn = QPushButton("🎤")
+        self.voice_btn.setCheckable(True)
+        self.voice_btn.toggled.connect(self.toggle_voice)
+        
         input_layout.addWidget(self.input_field)
         input_layout.addWidget(self.voice_btn)
-        input_layout.addWidget(self.send_btn)
+        input_layout.addWidget(self.action_btn)
         chat_layout.addLayout(input_layout)
         
         # Timeline
@@ -142,9 +154,11 @@ class MonitorWindow(QMainWindow):
         self.provider_lbl = QLabel(f"Provider: {self.config['llm']['default_provider']}")
         self.risk_lbl = QLabel("Risk: Low")
         self.token_lbl = QLabel("Tokens: 0")
+        self.voice_status_lbl = QLabel("Voice: Passive Mode")
         mon_layout.addWidget(self.provider_lbl)
         mon_layout.addWidget(self.risk_lbl)
         mon_layout.addWidget(self.token_lbl)
+        mon_layout.addWidget(self.voice_status_lbl)
         mon_layout.addStretch()
         
         # Config Tab
@@ -157,19 +171,54 @@ class MonitorWindow(QMainWindow):
         layout.addWidget(left_panel, 3)
         layout.addWidget(right_panel, 1)
 
+    def init_tray(self):
+        self.tray_icon = QSystemTrayIcon(self)
+        # In a real app, you'd set an icon here: self.tray_icon.setIcon(QIcon("icon.png"))
+        self.tray_icon.setToolTip("LUNA AI Agent")
+        
+        menu = QMenu()
+        show_action = QAction("Show", self)
+        show_action.triggered.connect(self.showNormal)
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(QApplication.instance().quit)
+        
+        menu.addAction(show_action)
+        menu.addAction(quit_action)
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.show()
+
     def update_stats(self):
         self.cpu_bar.setValue(int(psutil.cpu_percent()))
         self.ram_bar.setValue(int(psutil.virtual_memory().percent))
         self.token_lbl.setText(f"Tokens: {self.loop.memory_system.get_token_count()}")
 
+    def handle_action(self):
+        if self.action_btn.text() == "Send":
+            self.send_goal()
+        else:
+            self.stop_task()
+
     def send_goal(self):
         goal = self.input_field.text().strip()
         if not goal: return
+        
         self.chat_display.append(f"<b>USER:</b> {goal}")
         self.input_field.clear()
+        
+        # Phase 4: Disable input, change button to STOP
+        self.input_field.setEnabled(False)
+        self.action_btn.setText("STOP")
+        self.action_btn.setStyleSheet("background-color: #d13438; color: white; padding: 8px 20px;")
+        
         self.worker = AgentWorker(self.loop, goal)
         self.worker.finished.connect(self.handle_result)
         self.worker.start()
+
+    def stop_task(self):
+        if self.worker:
+            self.worker.stop()
+            self.chat_display.append("<i>Task interrupted by user.</i>")
+            self.reset_ui()
 
     def handle_result(self, result):
         self.chat_display.append(f"<b>LUNA:</b> {result.content}")
@@ -178,6 +227,22 @@ class MonitorWindow(QMainWindow):
         self.timeline.setItem(row, 0, QTableWidgetItem(time.strftime("%H:%M:%S")))
         self.timeline.setItem(row, 1, QTableWidgetItem("Task Execution"))
         self.timeline.setItem(row, 2, QTableWidgetItem(result.status))
+        self.reset_ui()
+
+    def reset_ui(self):
+        self.input_field.setEnabled(True)
+        self.action_btn.setText("Send")
+        self.action_btn.setStyleSheet("background-color: #007acc; color: white; padding: 8px 20px;")
+
+    def toggle_voice(self, checked):
+        if checked:
+            self.voice_btn.setStyleSheet("background-color: #007acc; color: white;")
+            self.voice_status_lbl.setText("Voice: Listening...")
+            self.chat_display.append("<i>Voice system: Active Listening...</i>")
+        else:
+            self.voice_btn.setStyleSheet("")
+            self.voice_status_lbl.setText("Voice: Passive Mode")
+            self.chat_display.append("<i>Voice system: Passive Mode.</i>")
 
 def run_gui(config):
     app = QApplication(sys.argv)

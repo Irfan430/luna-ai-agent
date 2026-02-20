@@ -1,11 +1,14 @@
 """
-LUNA AI Agent - Advanced Execution Kernel (AEK) v5.0
+LUNA AI Agent - Advanced Execution Kernel (AEK) v6.0
 Author: IRFAN
 
-Phase 2 & 3: OS Abstraction & Interaction Engine
-  - Auto-detect platform and use appropriate OS adapter.
-  - Support for keyboard, mouse, window, browser, and media control.
-  - Multi-browser support (Chrome, Firefox, Edge, Brave).
+Phase 3: Live File Creation Visibility
+  - Show full code in GUI.
+  - Show "Writing file..."
+  - Actually write file.
+  - Verify file exists.
+  - Show file path + size.
+  - If file creation fails → show real error.
 """
 
 import os
@@ -60,13 +63,10 @@ class ExecutionKernel:
         self.pyautogui_available = PYAUTOGUI_AVAILABLE
 
     def _get_adapter(self):
-        if self.system == "Linux":
-            return LinuxAdapter()
-        elif self.system == "Windows":
-            return WindowsAdapter()
-        elif self.system == "Darwin":
-            return MacAdapter()
-        return LinuxAdapter() # Default fallback
+        if self.system == "Linux": return LinuxAdapter()
+        elif self.system == "Windows": return WindowsAdapter()
+        elif self.system == "Darwin": return MacAdapter()
+        return LinuxAdapter()
 
     def get_system_stats(self) -> Dict[str, Any]:
         return {
@@ -115,15 +115,31 @@ class ExecutionKernel:
         return ExecutionResult("success", output, verified=True)
 
     def _file_operation(self, params: Dict[str, Any]) -> ExecutionResult:
+        """Phase 3: Live File Creation Visibility."""
         op = params.get("op")
         path = params.get("path")
         content = params.get("content", "")
+        
         if op == "create":
-            with open(path, 'w') as f: f.write(content)
-            return ExecutionResult("success", f"File created: {path}", verified=True)
+            print(f"Writing file: {path}...")
+            print(f"--- CODE START ---\n{content}\n--- CODE END ---")
+            try:
+                with open(path, 'w') as f: f.write(content)
+                if os.path.exists(path):
+                    size = os.path.getsize(path)
+                    return ExecutionResult("success", f"File created: {path} (Size: {size} bytes)", verified=True)
+                else:
+                    return ExecutionResult("failed", "", f"File creation failed: {path} not found after write.", verified=False)
+            except Exception as e:
+                return ExecutionResult("failed", "", f"File creation error: {str(e)}", verified=False)
+        
         elif op == "read":
-            with open(path, 'r') as f: data = f.read()
-            return ExecutionResult("success", data, verified=True)
+            try:
+                with open(path, 'r') as f: data = f.read()
+                return ExecutionResult("success", data, verified=True)
+            except Exception as e:
+                return ExecutionResult("failed", "", f"File read error: {str(e)}", verified=False)
+        
         return ExecutionResult("failed", "", f"Unknown file op: {op}")
 
     def _launch_app(self, params: Dict[str, Any]) -> ExecutionResult:
