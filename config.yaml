@@ -8,7 +8,7 @@ llm:
   
   providers:
     deepseek:
-      api_key: "your-deepseek-api-key-here"
+      api_key: "sk-15b0ddf886024792901ccc7123501623"
       model: "deepseek-chat"
       base_url: "https://api.deepseek.com"
     
@@ -32,15 +32,18 @@ llm:
     max_retries: 3
     detect_incomplete: true
 
-# Safety Configuration
+# Cognitive Loop Configuration
+cognitive:
+  max_iterations: 5
+  max_repair_attempts: 3
+  memory_compression_threshold: 4000  # tokens
+
+# Safety & Risk Configuration
 safety:
-  max_planning_iterations: 5
-  max_continuation_retries: 3
-  
   risk_levels:
     low: auto_execute
     medium: optional_confirmation
-    high: require_confirmation
+    high: mandatory_confirmation
     dangerous: block
 
 # Agent Configuration

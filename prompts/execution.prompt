@@ -1,0 +1,15 @@
+Generate the next structured action for the execution kernel.
+The action must follow the schema:
+{
+  "action": "command|file_op|git_op|app_launch|python_exec",
+  "parameters": { ... },
+  "risk_level": "low|medium|high|dangerous",
+  "requires_execution": true
+}
+Available tools:
+- Terminal commands (bash)
+- File operations (create, read, edit, delete, move)
+- Git automation (init, clone, add, commit, push, pull, branch, checkout)
+- OS application launching
+- Python script execution
+Action:

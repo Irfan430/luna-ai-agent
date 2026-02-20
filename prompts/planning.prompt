@@ -1,0 +1,9 @@
+Analyze the current state and the user's goal.
+Decompose the goal into a sequence of structured actions.
+Each action must be deterministic and executable by the kernel.
+Consider potential risks and dependencies.
+Output your plan in a structured JSON format.
+Current State: {state}
+User Goal: {goal}
+Memory Context: {memory}
+Plan the next step.

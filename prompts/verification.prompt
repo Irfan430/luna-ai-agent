@@ -1,0 +1,15 @@
+Verify the success of the execution.
+Goal: {goal}
+Action: {action}
+Result: {result}
+Verification criteria:
+- Did the action achieve its intended outcome?
+- Is the system state consistent?
+- Are there any side effects?
+- Is the goal fully completed?
+Verification:
+- status: success|failed|partial
+- content: summary of verification
+- error: if failed, technical cause
+- verified: true|false
+Verification Result:

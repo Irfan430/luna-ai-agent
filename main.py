@@ -2,13 +2,14 @@
 LUNA AI Agent - Main Entry Point
 Author: IRFAN
 
-Main entry point for LUNA agent.
+Main entry point for LUNA cognitive operating agent.
 """
 
 import sys
 import os
-from core.agent import LunaAgent
-from core.task_result import TaskResult
+import yaml
+from core.loop import CognitiveLoop
+from execution.kernel import ExecutionResult
 
 
 def print_banner():
@@ -16,8 +17,8 @@ def print_banner():
     banner = """
 ╔══════════════════════════════════════════╗
 ║                                          ║
-║           LUNA AI AGENT v1.0             ║
-║   Personal AI Operating Agent            ║
+║           LUNA COGNITIVE AGENT           ║
+║   High-Autonomy Operating System Core    ║
 ║   Author: IRFAN                          ║
 ║                                          ║
 ╚══════════════════════════════════════════╝
@@ -25,8 +26,17 @@ def print_banner():
     print(banner)
 
 
-def print_result(result: TaskResult):
-    """Print task result."""
+def load_config(config_path: str = "config.yaml") -> dict:
+    """Load configuration from YAML file."""
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f)
+
+
+def print_result(result: ExecutionResult):
+    """Print execution result."""
     status_symbol = {
         "success": "✓",
         "failed": "✗",
@@ -53,25 +63,25 @@ def run_cli():
     """Run CLI interface."""
     print_banner()
     
-    # Initialize agent
+    # Initialize cognitive loop
     try:
-        agent = LunaAgent()
-        print(f"\n✓ {agent.name} initialized successfully")
-        print(f"  LLM Mode: {agent.llm_manager.mode}")
-        print(f"  Provider: {agent.llm_manager.get_active_provider_name()}")
+        config = load_config("config.yaml")
+        loop = CognitiveLoop(config)
+        print(f"\n✓ LUNA initialized successfully")
+        print(f"  LLM Mode: {loop.llm_manager.mode}")
+        print(f"  Default Provider: {loop.llm_manager.default_provider_name}")
     except Exception as e:
-        print(f"\n✗ Failed to initialize agent: {e}")
+        print(f"\n✗ Failed to initialize LUNA: {e}")
         print("\nPlease check your config.yaml and ensure API keys are set.")
         return
     
     print("\nType 'exit' or 'quit' to exit")
-    print("Type 'status' to see agent status")
-    print("Type 'reset' to reset conversation history\n")
+    print("Type 'reset' to reset memory\n")
     
     # Main loop
     while True:
         try:
-            user_input = input(f"\n{agent.name}> ").strip()
+            user_input = input(f"\nLUNA> ").strip()
             
             if not user_input:
                 continue
@@ -80,21 +90,14 @@ def run_cli():
                 print("\nGoodbye!")
                 break
             
-            if user_input.lower() == 'status':
-                status = agent.get_status()
-                print("\nAgent Status:")
-                for key, value in status.items():
-                    print(f"  {key}: {value}")
-                continue
-            
             if user_input.lower() == 'reset':
-                agent.reset()
-                print("\n✓ Agent state reset")
+                loop.memory_system.clear_short_term()
+                print("\n✓ Memory reset")
                 continue
             
-            # Process input
-            print(f"\nProcessing...")
-            result = agent.process_input(user_input)
+            # Process input through cognitive loop
+            print(f"\nProcessing goal: {user_input}")
+            result = loop.run(user_input)
             print_result(result)
             
         except KeyboardInterrupt:
@@ -105,10 +108,6 @@ def run_cli():
 
 def main():
     """Main entry point."""
-    if len(sys.argv) > 1:
-        # Future: handle command line arguments
-        print("Command line arguments not yet supported. Running CLI mode.")
-    
     run_cli()
 
 

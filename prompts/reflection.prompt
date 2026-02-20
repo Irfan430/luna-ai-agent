@@ -1,0 +1,11 @@
+Analyze the execution result and the current goal.
+Goal: {goal}
+Action Taken: {action}
+Execution Result: {result}
+Reflect on the outcome:
+- Was the action successful?
+- Did it bring us closer to the goal?
+- Are there any errors or unexpected behaviors?
+- What is the next step?
+Update the internal state and memory.
+Reflection:

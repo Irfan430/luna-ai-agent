@@ -1,8 +1,7 @@
-# LUNA AI Agent Dependencies
+# LUNA Cognitive Agent Dependencies
 
 # LLM Integration
 openai>=1.0.0
-anthropic>=0.18.0
 requests>=2.31.0
 
 # Configuration
@@ -10,7 +9,6 @@ pyyaml>=6.0
 
 # GUI
 PyQt6>=6.6.0
-PyQt6-WebEngine>=6.6.0
 
 # Voice (optional)
 pyttsx3>=2.90
