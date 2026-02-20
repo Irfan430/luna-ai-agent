@@ -5,6 +5,9 @@
 llm:
   mode: single  # single | multi
   default_provider: deepseek
+  max_tokens: 4000
+  max_iterations: 5
+  repair_attempt_limit: 2
   
   providers:
     deepseek:
@@ -35,7 +38,7 @@ llm:
 # Cognitive Loop Configuration
 cognitive:
   max_iterations: 5
-  max_repair_attempts: 3
+  max_repair_attempts: 2
   memory_compression_threshold: 4000  # tokens
 
 # Safety & Risk Configuration
@@ -58,17 +61,20 @@ gui:
   show_token_usage: true
   show_confidence: true
   show_risk_indicator: true
+  show_timeline: true
+  show_process_monitor: true
+  show_resource_monitor: true
 
 # Voice Configuration
 voice:
   enabled: false
-  language: en
+  always_on: true
   wake_word: "luna"
   acknowledgment_enabled: true
   acknowledgment_style: "hmm"   # hmm | yes | listening | default
   passive_listening: true
   silence_timeout_seconds: 5
-  vosk_model_path: "vosk-model-small-en-us"  # Download: https://alphacephei.com/vosk/models
+  vosk_model_path: "vosk-model-small-en-us"
 
 # Memory Configuration
 memory:

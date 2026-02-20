@@ -1,65 +1,62 @@
 """
-LUNA AI Agent - Unified LLM Routing Layer
+LUNA AI Agent - Unified LLM Brain & Routing Layer
 Author: IRFAN
 
-Phase 1 Fix: Unified routing layer that classifies every user input
-before entering the cognitive loop.
-
-Routing modes:
-  - conversation : Simple reply, no planning loop entered.
-  - action       : Single deterministic action required.
-  - plan         : Multi-step planning loop required.
-
-JSON repair fallback:
-  - Detect malformed JSON.
-  - Extract first valid JSON block.
-  - Retry once.
-  - If still invalid → fallback to conversation mode.
+Phase 1 Architectural Stabilization:
+  - Unified LLM Brain contract: always returns mode, confidence, response, and steps.
+  - Routing modes: conversation, action, plan.
+  - JSON repair fallback (1 retry max).
+  - No 'action' key required if mode == conversation.
 """
 
 import json
 import re
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 
 from llm.provider import LLMManager
 
 logger = logging.getLogger("luna.llm.router")
 
 # ------------------------------------------------------------------
-# Routing prompt
+# Unified Brain Prompt
 # ------------------------------------------------------------------
-ROUTING_SYSTEM_PROMPT = """You are LUNA's routing brain.
-Your ONLY job is to classify the user's input and return a JSON object.
+BRAIN_SYSTEM_PROMPT = """You are LUNA's cognitive brain.
+Your job is to classify the user's input and decide the execution mode.
+
+Modes:
+- "conversation": For greetings, simple questions, or general talk.
+- "action": For a single, immediate OS/file/app task.
+- "plan": For complex, multi-step goals.
 
 Rules:
-- If the input is a greeting, question, or conversational statement → mode = "conversation"
-- If the input requires a single OS/file/app action → mode = "action"
-- If the input requires multiple steps or planning → mode = "plan"
+- If mode is "conversation", provide a direct "response". "steps" can be empty.
+- If mode is "action" or "plan", "steps" must contain the structured actions.
+- NEVER enter planning for simple greetings.
 
-NEVER enter planning for simple greetings like "hello", "hi", "how are you", "thanks".
-
-Output ONLY valid JSON. No prose. No markdown.
+Output ONLY valid JSON.
 
 Format:
 {
   "mode": "conversation | action | plan",
-  "response": "<direct reply if mode is conversation, empty string otherwise>",
-  "steps": []
+  "confidence": 0.0-1.0,
+  "response": "string",
+  "steps": [
+    {
+      "action": "string",
+      "parameters": {},
+      "description": "string"
+    }
+  ]
 }
 """
-
 
 # ------------------------------------------------------------------
 # JSON repair utilities
 # ------------------------------------------------------------------
 
 def _extract_first_json_block(text: str) -> Optional[Dict[str, Any]]:
-    """
-    Attempt to extract the first valid JSON object from arbitrary text.
-    Handles markdown code fences, inline JSON, and partial objects.
-    """
-    # 1. Markdown code fence
+    """Extract the first valid JSON object from arbitrary text."""
     fence_match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
     if fence_match:
         try:
@@ -67,13 +64,11 @@ def _extract_first_json_block(text: str) -> Optional[Dict[str, Any]]:
         except json.JSONDecodeError:
             pass
 
-    # 2. Whole text
     try:
         return json.loads(text.strip())
     except json.JSONDecodeError:
         pass
 
-    # 3. Outermost braces
     start = text.find('{')
     end = text.rfind('}')
     if start != -1 and end != -1 and end > start:
@@ -84,58 +79,38 @@ def _extract_first_json_block(text: str) -> Optional[Dict[str, Any]]:
 
     return None
 
-
 def repair_and_parse_json(text: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
-    """
-    Attempt to parse JSON from LLM output with repair fallback.
-    Returns (success, parsed_dict).
-    """
+    """Attempt to parse JSON with 1 repair retry fallback."""
     result = _extract_first_json_block(text)
     if result is not None:
         return True, result
 
-    # Repair attempt: strip common LLM artifacts
+    # Repair attempt: strip common artifacts
     cleaned = text.strip()
-    cleaned = re.sub(r'^[^{]*', '', cleaned)   # drop leading non-JSON text
-    cleaned = re.sub(r'[^}]*$', '', cleaned)   # drop trailing non-JSON text
+    cleaned = re.sub(r'^[^{]*', '', cleaned)
+    cleaned = re.sub(r'[^}]*$', '', cleaned)
     result = _extract_first_json_block(cleaned)
     if result is not None:
-        logger.info("[JSONRepair] Recovered JSON after stripping artifacts.")
         return True, result
 
-    logger.warning("[JSONRepair] Could not recover valid JSON. Falling back to conversation mode.")
     return False, None
 
-
 # ------------------------------------------------------------------
-# Router
+# Router / Brain
 # ------------------------------------------------------------------
 
 class LLMRouter:
-    """
-    Unified LLM routing layer.
-
-    Before entering the cognitive loop, every user input is sent here.
-    The router returns a routing decision dict:
-      {
-        "mode": "conversation | action | plan",
-        "response": "<text if conversation>",
-        "steps": []
-      }
-    """
+    """Unified LLM Brain routing layer."""
 
     def __init__(self, llm_manager: LLMManager):
         self.llm_manager = llm_manager
 
-    def route(self, user_input: str) -> Dict[str, Any]:
-        """
-        Classify user input and return routing decision.
-        Falls back to conversation mode on any failure.
-        """
-        messages = [
-            {"role": "system", "content": ROUTING_SYSTEM_PROMPT},
-            {"role": "user", "content": user_input},
-        ]
+    def route(self, user_input: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Classify input and return unified brain decision."""
+        messages = [{"role": "system", "content": BRAIN_SYSTEM_PROMPT}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": user_input})
 
         try:
             response = self.llm_manager.call(messages, temperature=0.2)
@@ -144,28 +119,27 @@ class LLMRouter:
             success, parsed = repair_and_parse_json(raw_text)
 
             if success and parsed:
-                mode = parsed.get("mode", "conversation")
-                if mode not in ("conversation", "action", "plan"):
-                    logger.warning(f"[Router] Unknown mode '{mode}'. Defaulting to conversation.")
-                    mode = "conversation"
+                # Ensure all required keys exist per contract
                 return {
-                    "mode": mode,
+                    "mode": parsed.get("mode", "conversation"),
+                    "confidence": float(parsed.get("confidence", 0.0)),
                     "response": parsed.get("response", ""),
                     "steps": parsed.get("steps", []),
                 }
 
-            # JSON repair failed — fallback
-            logger.warning("[Router] JSON repair failed. Falling back to conversation mode.")
+            # Fallback if parsing fails after repair
             return {
                 "mode": "conversation",
-                "response": raw_text.strip(),
+                "confidence": 0.5,
+                "response": raw_text.strip() if raw_text else "I encountered an error processing that.",
                 "steps": [],
             }
 
         except Exception as e:
-            logger.error(f"[Router] Routing error: {e}. Defaulting to conversation mode.")
+            logger.error(f"[Brain] Routing error: {e}")
             return {
                 "mode": "conversation",
-                "response": "I'm here. How can I help you?",
+                "confidence": 0.0,
+                "response": "System error in cognitive routing.",
                 "steps": [],
             }
