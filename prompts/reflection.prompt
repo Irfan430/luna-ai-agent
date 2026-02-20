@@ -1,11 +1,29 @@
-Analyze the execution result and the current goal.
+Analyze the execution result and update the agent's internal understanding.
+
 Goal: {goal}
 Action Taken: {action}
 Execution Result: {result}
-Reflect on the outcome:
-- Was the action successful?
-- Did it bring us closer to the goal?
-- Are there any errors or unexpected behaviors?
-- What is the next step?
-Update the internal state and memory.
+
+Reflect on:
+- Was the action successful? What was the exact outcome?
+- Did it bring us closer to the goal? By how much?
+- Are there errors, unexpected behaviors, or side effects?
+- What is the most logical next step?
+- Is there evidence of stagnation (same failure repeating)?
+
+IMPORTANT:
+- Do NOT suggest rewriting unrelated modules.
+- Do NOT suggest overly complex recovery plans. Propose the simplest fix first.
+- If the same error has occurred more than once, propose a fundamentally different approach.
+
+Output ONLY valid JSON:
+{
+  "outcome_assessment": "success|partial|failure",
+  "progress_toward_goal": "<qualitative assessment>",
+  "errors_detected": "<list of errors or 'none'>",
+  "stagnation_risk": true|false,
+  "next_step_recommendation": "<concrete next action>",
+  "reasoning": "<brief internal analysis>"
+}
+
 Reflection:

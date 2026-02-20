@@ -1,15 +1,28 @@
-Verify the success of the execution.
+Verify the success of the execution against the stated goal.
+
 Goal: {goal}
-Action: {action}
-Result: {result}
+Action Taken: {action}
+Execution Result: {result}
+
 Verification criteria:
 - Did the action achieve its intended outcome?
-- Is the system state consistent?
-- Are there any side effects?
-- Is the goal fully completed?
-Verification:
-- status: success|failed|partial
-- content: summary of verification
-- error: if failed, technical cause
-- verified: true|false
+- Is the system state consistent with the expected outcome?
+- Are there any side effects or errors?
+- Is the OVERALL goal fully completed, or are further steps required?
+
+IMPORTANT:
+- Do NOT mark status as "success" unless the output explicitly confirms the intended outcome.
+- Do NOT hallucinate verification. If the output is ambiguous, mark status as "partial".
+- If the goal requires multiple steps, mark status as "partial" until ALL steps are verified.
+
+Output ONLY valid JSON:
+{
+  "status": "success|failed|partial",
+  "content": "<summary of what was verified>",
+  "error": "<technical cause if failed, empty string if success>",
+  "verified": true|false,
+  "goal_complete": true|false,
+  "reasoning": "<brief explanation of the verification decision>"
+}
+
 Verification Result:

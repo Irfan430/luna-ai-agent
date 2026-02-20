@@ -1,10 +1,19 @@
-Generate the next structured action for the Advanced Execution Kernel (AEK).
-The action must follow the schema:
+Generate the NEXT single structured action for the Advanced Execution Kernel (AEK).
+
+Rules:
+- Output EXACTLY ONE action. Do not chain multiple actions in a single response.
+- The action MUST conform to the schema below.
+- Do NOT include raw shell commands unless the action type is "command".
+- Do NOT produce free-form text. Output ONLY the JSON object.
+- If no action is needed (goal already complete), output: {"action": "none", "parameters": {}, "requires_execution": false}
+
+Action schema:
 {
   "action": "command|file_op|git_op|app_launch|python_exec|process_op|network_op|system_info",
   "parameters": { ... },
-  "risk_level": "low|medium|high|dangerous",
-  "requires_execution": true
+  "risk_level": "low|medium|high|blocked",
+  "requires_execution": true,
+  "reasoning": "<why this action is the correct next step>"
 }
 
 Available AEK tools:
@@ -18,4 +27,5 @@ Available AEK tools:
 - system_info: Get system stats (parameters: {})
 
 Always prioritize deterministic tools over raw shell commands when possible.
+
 Action:

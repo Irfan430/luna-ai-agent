@@ -1,131 +1,292 @@
 """
-LUNA AI Agent - LLM Provider Abstraction
+LUNA AI Agent - LLM Provider Abstraction v2.0
 Author: IRFAN
 
-Abstract interface and provider implementations for LLM services.
+Hardened provider layer with:
+  - Strict structured JSON enforcement
+  - Automatic schema validation
+  - Error classification (timeout, rate limit, context limit)
+  - Single mode enforcement
+  - Multi mode fallback logic with provider switch logging
+  - Raw string output blocked from reaching executor
 """
 
 import json
 import re
+import time
+import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+
 from openai import OpenAI
 
+logger = logging.getLogger("luna.llm.provider")
+
+
+# ------------------------------------------------------------------
+# Error classification
+# ------------------------------------------------------------------
+
+class LLMErrorClass:
+    TIMEOUT       = "timeout"
+    RATE_LIMIT    = "rate_limit"
+    CONTEXT_LIMIT = "context_limit"
+    AUTH_ERROR    = "auth_error"
+    SERVER_ERROR  = "server_error"
+    UNKNOWN       = "unknown"
+
+
+def classify_llm_error(error: Exception) -> str:
+    msg = str(error).lower()
+    if "timeout" in msg:
+        return LLMErrorClass.TIMEOUT
+    if "rate limit" in msg or "429" in msg:
+        return LLMErrorClass.RATE_LIMIT
+    if "context" in msg or "token" in msg or "length" in msg or "4096" in msg:
+        return LLMErrorClass.CONTEXT_LIMIT
+    if "401" in msg or "unauthorized" in msg or "api key" in msg:
+        return LLMErrorClass.AUTH_ERROR
+    if "500" in msg or "502" in msg or "503" in msg:
+        return LLMErrorClass.SERVER_ERROR
+    return LLMErrorClass.UNKNOWN
+
+
+# ------------------------------------------------------------------
+# LLM Response
+# ------------------------------------------------------------------
 
 class LLMResponse:
     """Structured LLM response."""
-    def __init__(self, content: str, usage: Dict[str, int], finish_reason: str):
+    def __init__(self, content: str, usage: Dict[str, int], finish_reason: str, provider_name: str = ""):
         self.content = content
         self.usage = usage
         self.finish_reason = finish_reason
+        self.provider_name = provider_name
 
     def is_truncated(self) -> bool:
-        return self.finish_reason in ['length', 'max_tokens']
+        return self.finish_reason in ('length', 'max_tokens')
 
+    def __repr__(self):
+        return (
+            f"LLMResponse(provider={self.provider_name}, "
+            f"finish_reason={self.finish_reason}, "
+            f"tokens={self.usage.get('total_tokens', '?')})"
+        )
+
+
+# ------------------------------------------------------------------
+# Abstract provider interface
+# ------------------------------------------------------------------
 
 class LLMProvider(ABC):
     """Abstract LLM provider interface."""
-    def __init__(self, api_key: str, model: str, base_url: str):
+    def __init__(self, api_key: str, model: str, base_url: str, name: str = ""):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
+        self.name = name
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
     @abstractmethod
-    def call(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: Optional[int] = None) -> LLMResponse:
+    def call(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> LLMResponse:
         pass
 
+    # ------------------------------------------------------------------
+    # JSON extraction — strict enforcement
+    # ------------------------------------------------------------------
+
     def extract_json(self, text: str) -> Optional[Dict[str, Any]]:
-        """Extract JSON from text that may contain markdown code blocks."""
-        # Try to find JSON in code blocks
-        json_match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
+        """
+        Extract and validate JSON from LLM output.
+        Blocks raw string output from passing through.
+        Returns None if no valid JSON is found.
+        """
+        # 1. Try markdown code block
+        json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group(1))
             except json.JSONDecodeError:
                 pass
-        
-        # Try to parse entire text as JSON
+
+        # 2. Try entire text as JSON
         try:
             return json.loads(text.strip())
         except json.JSONDecodeError:
             pass
-        
-        # Try to find JSON object in text
+
+        # 3. Try to find outermost JSON object
         start = text.find('{')
         end = text.rfind('}')
-        if start != -1 and end != -1:
+        if start != -1 and end != -1 and end > start:
             try:
-                return json.loads(text[start:end+1])
+                return json.loads(text[start:end + 1])
             except json.JSONDecodeError:
                 pass
-        
+
+        # 4. Strict enforcement: no valid JSON found
+        logger.warning(
+            "[LLMProvider] extract_json: No valid JSON found in response. "
+            "Raw string output will NOT be passed to executor."
+        )
         return None
 
+    def validate_action_schema(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Validate that extracted JSON conforms to the action schema.
+        Returns (is_valid, error_message).
+        """
+        required_fields = ["action", "parameters"]
+        for field in required_fields:
+            if field not in data:
+                return False, f"Missing required field: '{field}'"
+
+        valid_actions = {
+            "command", "file_op", "git_op", "app_launch",
+            "python_exec", "process_op", "network_op", "system_info"
+        }
+        if data["action"] not in valid_actions:
+            return False, f"Invalid action: '{data['action']}'. Must be one of {sorted(valid_actions)}"
+
+        if not isinstance(data["parameters"], dict):
+            return False, f"'parameters' must be a dict, got {type(data['parameters']).__name__}"
+
+        return True, ""
+
+
+# ------------------------------------------------------------------
+# Generic OpenAI-compatible provider
+# ------------------------------------------------------------------
 
 class GenericOpenAIProvider(LLMProvider):
-    """Generic OpenAI-compatible provider."""
-    def call(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: Optional[int] = None) -> LLMResponse:
+    """Generic OpenAI-compatible provider with error classification."""
+
+    def call(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> LLMResponse:
         try:
-            kwargs = {
+            kwargs: Dict[str, Any] = {
                 "model": self.model,
                 "messages": messages,
-                "temperature": temperature
+                "temperature": temperature,
             }
             if max_tokens:
                 kwargs["max_tokens"] = max_tokens
-            
+
             response = self.client.chat.completions.create(**kwargs)
-            
-            content = response.choices[0].message.content
+
+            content = response.choices[0].message.content or ""
             usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
+                "prompt_tokens":     response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
+                "total_tokens":      response.usage.total_tokens,
             }
             finish_reason = response.choices[0].finish_reason
-            
-            return LLMResponse(content, usage, finish_reason)
-        except Exception as e:
-            raise Exception(f"LLM Provider error: {str(e)}")
 
+            return LLMResponse(content, usage, finish_reason, provider_name=self.name)
+
+        except Exception as e:
+            error_class = classify_llm_error(e)
+            raise Exception(f"[{self.name}] LLM error ({error_class}): {str(e)}")
+
+
+# ------------------------------------------------------------------
+# LLM Manager
+# ------------------------------------------------------------------
 
 class LLMManager:
-    """Manages LLM provider selection and fallback."""
+    """
+    Manages LLM provider selection, single/multi mode, and fallback logic.
+    Logs all provider switches.
+    """
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.mode = config.get('llm', {}).get('mode', 'single')
         self.default_provider_name = config.get('llm', {}).get('default_provider', 'deepseek')
         self.providers: Dict[str, LLMProvider] = {}
+        self._active_provider_name: str = self.default_provider_name
         self._init_providers()
 
     def _init_providers(self):
         providers_config = self.config.get('llm', {}).get('providers', {})
         for name, cfg in providers_config.items():
-            if cfg.get('api_key'):
+            if cfg.get('api_key') and not cfg['api_key'].startswith("your-"):
                 self.providers[name] = GenericOpenAIProvider(
                     api_key=cfg['api_key'],
                     model=cfg['model'],
-                    base_url=cfg['base_url']
+                    base_url=cfg['base_url'],
+                    name=name,
                 )
+                logger.info(f"[LLMManager] Initialized provider: {name} ({cfg['model']})")
 
     def get_provider(self, name: Optional[str] = None) -> LLMProvider:
         name = name or self.default_provider_name
         if name not in self.providers:
-            raise ValueError(f"Provider '{name}' not configured or initialized")
+            raise ValueError(f"Provider '{name}' not configured or initialized.")
         return self.providers[name]
 
-    def call(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: Optional[int] = None) -> LLMResponse:
+    def _log_provider_switch(self, from_name: str, to_name: str, reason: str):
+        logger.warning(
+            f"[LLMManager] Provider switch: {from_name} → {to_name} | Reason: {reason}"
+        )
+        print(f"[LLMManager] Switching provider: {from_name} → {to_name} ({reason})")
+        self._active_provider_name = to_name
+
+    def call(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> LLMResponse:
+        """
+        Call the LLM in single or multi mode.
+        In multi mode, falls back through providers on failure with logging.
+        Raw string output is never returned without JSON validation in the pipeline.
+        """
         if self.mode == 'single':
             return self.get_provider().call(messages, temperature, max_tokens)
-        
-        # Multi-mode fallback
-        provider_order = [self.default_provider_name] + [p for p in self.providers if p != self.default_provider_name]
+
+        # Multi-mode: ordered fallback
+        provider_order = [self.default_provider_name] + [
+            p for p in self.providers if p != self.default_provider_name
+        ]
         last_error = None
+        previous_name = None
+
         for name in provider_order:
-            try:
-                return self.get_provider(name).call(messages, temperature, max_tokens)
-            except Exception as e:
-                last_error = e
+            if name not in self.providers:
                 continue
+            try:
+                if previous_name and previous_name != name:
+                    self._log_provider_switch(previous_name, name, str(last_error))
+                response = self.get_provider(name).call(messages, temperature, max_tokens)
+                self._active_provider_name = name
+                return response
+            except Exception as e:
+                error_class = classify_llm_error(e)
+                logger.error(f"[LLMManager] Provider '{name}' failed ({error_class}): {e}")
+                last_error = e
+                previous_name = name
+
+                # Don't retry on auth errors — skip immediately
+                if error_class == LLMErrorClass.AUTH_ERROR:
+                    continue
+                # Brief backoff on rate limit
+                if error_class == LLMErrorClass.RATE_LIMIT:
+                    time.sleep(3)
+                continue
+
         raise Exception(f"All LLM providers failed. Last error: {last_error}")
+
+    @property
+    def active_provider_name(self) -> str:
+        return self._active_provider_name

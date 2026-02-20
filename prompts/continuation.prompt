@@ -1,7 +1,17 @@
-The previous response was truncated or incomplete.
-Here is the partial response:
+[CONTINUATION REQUEST]
+
+The previous LLM response was truncated or incomplete.
+
+Step Index: {step_index}
+Partial output received:
 {partial_response}
-Please continue from where it left off and complete the response.
-If it was JSON, complete the JSON structure properly.
-If it was a plan, continue the steps.
+
+Instructions:
+- Continue EXACTLY from where the output was cut off.
+- Do NOT restart from the beginning.
+- Do NOT add preamble or explanation before the continuation.
+- If the output was JSON, complete the JSON structure properly — close all open braces and brackets.
+- If the output was a plan, continue the steps from the last complete step.
+- Output ONLY the continuation content.
+
 Continuation:

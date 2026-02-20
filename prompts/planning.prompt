@@ -1,9 +1,33 @@
-Analyze the current state and the user's goal.
-Decompose the goal into a sequence of structured actions.
-Each action must be deterministic and executable by the kernel.
-Consider potential risks and dependencies.
-Output your plan in a structured JSON format.
-Current State: {state}
-User Goal: {goal}
-Memory Context: {memory}
-Plan the next step.
+Analyze the current agent state and the user's goal.
+Decompose the goal into the MINIMUM viable sequence of structured, deterministic actions.
+
+Rules:
+- Do NOT overplan. Produce only the next 1-3 steps, not the entire plan at once.
+- Each step must be executable by the Advanced Execution Kernel (AEK).
+- Consider risks and dependencies before proposing any step.
+- Do NOT rewrite or modify modules unrelated to the current goal.
+- Do NOT hallucinate completion. Only mark a step done when its output is verified.
+
+Current Agent State:
+{state}
+
+User Goal:
+{goal}
+
+Long-Term Memory Context:
+{memory}
+
+Output ONLY valid JSON in this format:
+{
+  "reasoning": "<brief internal analysis>",
+  "next_steps": [
+    {
+      "step_index": 1,
+      "description": "<what this step does>",
+      "action": "<action_type>",
+      "parameters": {},
+      "expected_outcome": "<what success looks like>",
+      "risk_estimate": "low|medium|high"
+    }
+  ]
+}
