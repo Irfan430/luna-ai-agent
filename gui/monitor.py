@@ -88,8 +88,9 @@ class LUNAMonitor(QMainWindow):
         input_layout.addWidget(self.send_btn)
         left_panel.addLayout(input_layout)
         
-        right_panel = QVBoxLayout()
-        right_panel.setFixedWidth(300)
+        right_panel_widget = QWidget()
+        right_panel_widget.setFixedWidth(300)
+        right_panel = QVBoxLayout(right_panel_widget)
         
         right_panel.addWidget(QLabel("System Resources:"))
         self.cpu_bar = QProgressBar()
@@ -110,7 +111,7 @@ class LUNAMonitor(QMainWindow):
         right_panel.addWidget(self.log_display)
         
         layout.addLayout(left_panel, 3)
-        layout.addLayout(right_panel, 1)
+        layout.addWidget(right_panel_widget, 1)
 
     def load_stylesheet(self):
         style_path = os.path.join(os.path.dirname(__file__), "style.qss")
