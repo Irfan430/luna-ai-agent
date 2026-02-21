@@ -9,6 +9,7 @@ Phase 1 & 2: Core Architecture Refactor
 """
 
 import json
+import os
 import re
 import logging
 from typing import Dict, Any, Optional, Tuple, List, Union
