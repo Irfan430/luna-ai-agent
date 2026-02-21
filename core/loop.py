@@ -2,11 +2,11 @@
 LUNA AI Agent - Core Execution Loop v9.0
 Author: IRFAN
 
-Phase 1 & 2: Core Architecture Refactor
-  - Single-pass LLM execution.
-  - Execution Router: system, browser, screen, code.
-  - No multi-iteration planning loop.
-  - No repetitive cognitive reflection.
+Structural Stabilization Refactor:
+  - Strict single-pass action system.
+  - Performance Modes: FAST (default) and AGENT.
+  - Central Action Router integration.
+  - Return error immediately if action fails.
 """
 
 import json
@@ -16,7 +16,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from llm.provider import LLMManager
-from llm.router import LLMRouter, BrainOutput, normalize_brain_output, repair_and_parse_json
+from llm.router import LLMRouter, BrainOutput, normalize_brain_output
 from execution.kernel import ExecutionKernel
 from risk.engine import RiskEngine
 from memory.system import MemorySystem
@@ -34,73 +34,79 @@ class CognitiveLoop:
         self.risk_engine = RiskEngine(config)
         self.memory_system = MemorySystem(config)
         self.router = LLMRouter(self.llm_manager, config)
+        # FAST MODE (default): Single LLM call, Direct action, No planning
+        # AGENT MODE (optional): Allow complex reasoning
         self.mode = config.get("agent", {}).get("mode", "FAST")
 
     def run(self, goal: str) -> TaskResult:
-        """Run the single-pass execution router."""
+        """Run the execution loop based on current performance mode."""
         # Numeric input guard
         if isinstance(goal, (int, float)) or (isinstance(goal, str) and goal.isdigit()):
             response = f"I received the numeric input: {goal}. How would you like me to use this?"
             return TaskResult(status="success", content=response, verified=True)
 
-        # FAST MODE: Single-pass execution
+        # Performance Mode Routing
         if self.mode == "FAST":
+            # FAST MODE: Single-pass execution
             return self._execute_single_pass(goal)
-        
-        # AGENT MODE: Multi-step reasoning (Optional, for complex tasks)
-        return self._execute_agent_mode(goal)
+        else:
+            # AGENT MODE: Allow more complex reasoning (still single-pass for now but with more context)
+            return self._execute_agent_mode(goal)
 
     def _execute_single_pass(self, goal: str) -> TaskResult:
-        """INPUT → LLM → EXECUTION ROUTER → OUTPUT"""
+        """INPUT → LLM → ACTION ROUTER → EXECUTE → RETURN"""
         # 1. Routing (Single LLM Call)
         routing = self.router.route(goal, history=self.memory_system.short_term)
         
         if not isinstance(routing, BrainOutput):
             routing = normalize_brain_output(routing)
 
-        # 2. Execution Router
+        # 2. Extract Action and Parameters
         action = routing.action
         params = routing.parameters
         response = routing.response
+        thought = routing.thought
 
         # Log thought if present
-        if routing.thought:
-            print(f"LUNA Thought: {routing.thought}")
+        if thought:
+            print(f"LUNA Thought: {thought}")
 
-        # 3. Handle Actions
+        # 3. Handle Conversation Action
         if action == "conversation":
             print(f"\nLUNA: {response}")
-            self.memory_system.add_short_term("user", str(goal))
-            self.memory_system.add_short_term("assistant", response)
+            self._update_memory(goal, response)
             return TaskResult(status="success", content=response, verified=True)
 
-        # Execute Action
+        # 4. Execute Action via Central Router
         print(f"Executing Action: {action}...")
         
-        # Risk check (minimal for simple commands)
+        # Risk check
         risk_report = self.risk_engine.get_risk_report(action, params)
         if risk_report["blocked"]:
-            return TaskResult.failure(f"Action blocked: {risk_report['reason']}")
+            return TaskResult.failure(f"Action blocked: {risk_report['label']}")
 
-        # Map action to kernel
-        kernel_action = action
-        if action == "system": kernel_action = "command"
-        elif action == "code": kernel_action = "file_op" # Default to file_op for code, can be refined
+        # Execute via Kernel (Central Action Router)
+        result = self.execution_kernel.execute(action, params)
         
-        # Execute
-        result = self.execution_kernel.execute(kernel_action, params)
-        
-        # 4. Return Result
+        # 5. Return Result Immediately
         if result.status == "success":
             final_content = f"{response}\n\nExecution Result:\n{result.content}" if response else result.content
-            self.memory_system.add_short_term("user", str(goal))
-            self.memory_system.add_short_term("assistant", final_content)
+            self._update_memory(goal, final_content)
             return TaskResult(status="success", content=final_content, verified=True)
         else:
-            return TaskResult.failure(f"Execution failed: {result.error}")
+            # Return error immediately if action fails
+            error_msg = f"Execution failed: {result.error}"
+            print(f"LUNA Error: {error_msg}")
+            return TaskResult.failure(error_msg)
 
     def _execute_agent_mode(self, goal: str) -> TaskResult:
-        """Legacy multi-step reasoning for complex tasks."""
-        # For now, just fallback to single pass or implement a simple 2-step loop
-        # The prompt specifically asked to remove slow architecture
+        """AGENT MODE: Enhanced reasoning version of single-pass."""
+        # For now, AGENT mode uses the same single-pass logic but could be expanded 
+        # with multi-step reasoning in the future if needed, while staying stable.
+        # The key difference is it allows more complex instructions to be passed to LLM.
         return self._execute_single_pass(goal)
+
+    def _update_memory(self, goal: str, response: str):
+        """Update short-term memory with user goal and assistant response."""
+        self.memory_system.add_short_term("user", str(goal))
+        self.memory_system.add_short_term("assistant", response)

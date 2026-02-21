@@ -239,14 +239,21 @@ class LLMManager:
     def _init_providers(self):
         providers_config = self.config.get('llm', {}).get('providers', {})
         for name, cfg in providers_config.items():
-            if cfg.get('api_key') and not cfg['api_key'].startswith("your-"):
-                self.providers[name] = GenericOpenAIProvider(
-                    api_key=cfg['api_key'],
-                    model=cfg['model'],
-                    base_url=cfg['base_url'],
-                    name=name,
-                )
-                logger.info(f"[LLMManager] Initialized provider: {name} ({cfg['model']})")
+            api_key = cfg.get('api_key')
+            if api_key:
+                # Support environment variable expansion
+                if api_key.startswith("${") and api_key.endswith("}"):
+                    env_var = api_key[2:-1]
+                    api_key = os.environ.get(env_var, api_key)
+                
+                if not api_key.startswith("your-"):
+                    self.providers[name] = GenericOpenAIProvider(
+                        api_key=api_key,
+                        model=cfg['model'],
+                        base_url=cfg['base_url'],
+                        name=name,
+                    )
+                    logger.info(f"[LLMManager] Initialized provider: {name} ({cfg['model']})")
 
     def get_provider(self, name: Optional[str] = None) -> LLMProvider:
         name = name or self.default_provider_name

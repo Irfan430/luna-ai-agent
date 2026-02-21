@@ -39,12 +39,21 @@ def normalize_brain_output(raw: Any) -> BrainOutput:
         action = str(raw.get("action", "conversation")).lower()
         # Map old modes to new actions if necessary
         if action == "direct_action": action = "system"
-        elif action == "deep_plan": action = "code"
+        
+        # Extract parameters - handle both nested and flat structure
+        parameters = raw.get("parameters", {})
+        if not isinstance(parameters, dict):
+            parameters = {}
+        
+        # Include all other keys as parameters for flat structure support
+        for k, v in raw.items():
+            if k not in ["action", "response", "thought", "confidence", "parameters"]:
+                parameters[k] = v
         
         return BrainOutput(
             action=action,
             response=str(raw.get("response", "")),
-            parameters=raw.get("parameters") if isinstance(raw.get("parameters"), dict) else {},
+            parameters=parameters,
             thought=str(raw.get("thought", "")),
             confidence=float(raw.get("confidence", 1.0))
         )
@@ -52,37 +61,43 @@ def normalize_brain_output(raw: Any) -> BrainOutput:
         logger.error(f"Normalization error: {e}")
         return BrainOutput(action="conversation", response="I encountered an internal error processing that.", confidence=0.0)
 
-BRAIN_SYSTEM_PROMPT = """You are LUNA, a fast, real-time system companion.
+BRAIN_SYSTEM_PROMPT = """You are LUNA, a fast, real-time action-based Jarvis system.
 Your goal is to execute user commands immediately with minimal cognitive overhead.
 
-EXECUTION ROUTER:
-- If the user wants to chat or ask a question:
-  {"action": "conversation", "response": "your helpful response"}
+STRICT RULES:
+1. YOU MUST RETURN VALID JSON ONLY.
+2. NEVER include plain text explanations or conversational filler outside the JSON.
+3. NEVER mix explanations with JSON.
+4. If you cannot fulfill a request, return a JSON error response.
+5. Allowed actions are ONLY: system, browser, screen, code, conversation.
 
-- If the user wants to run a shell command or system task:
-  {"action": "system", "parameters": {"command": "the command"}}
+ALLOWED ACTIONS:
+- conversation: For general chat, questions, or when no other action is appropriate.
+  Example: {"action": "conversation", "response": "Hello! How can I help you today?"}
 
-- If the user wants to use the browser:
-  {"action": "browser", "parameters": {"instruction": "natural language instruction for playwright"}}
+- system: Run shell commands or system tasks.
+  Example: {"action": "system", "command": "firefox"}
 
-- If the user wants to see the screen or analyze UI:
-  {"action": "screen", "parameters": {"instruction": "what to look for"}}
+- browser: Use the web browser for searching or visiting sites.
+  Example: {"action": "browser", "task": "search for latest AI news"}
 
-- If the user wants to write and execute complex code:
-  {"action": "code", "parameters": {"language": "python", "code": "the code", "filename": "script.py"}}
+- screen: Analyze the current screen or UI.
+  Example: {"action": "screen", "instruction": "what is visible on the screen?"}
 
-RULES:
-1. Output ONLY valid JSON.
-2. No multi-step planning. Execute the most logical next step immediately.
-3. Be concise. Speed is priority.
+- code: Write and execute Python code.
+  Example: {"action": "code", "language": "python", "code": "print('Hello World')", "filename": "hello.py"}
 
-Format:
+OUTPUT FORMAT:
 {
-  "thought": "brief reasoning",
-  "action": "conversation | system | browser | screen | code",
-  "parameters": {},
-  "response": "message to user",
-  "confidence": 1.0
+  "thought": "brief reasoning (1 sentence)",
+  "action": "system | browser | screen | code | conversation",
+  "command": "shell command (if action is system)",
+  "task": "browser task (if action is browser)",
+  "instruction": "screen instruction (if action is screen)",
+  "language": "python (if action is code)",
+  "code": "code content (if action is code)",
+  "filename": "script name (if action is code)",
+  "response": "message to user (for conversation or status)"
 }
 """
 
@@ -138,8 +153,15 @@ class LLMRouter:
             raw_text = response.content
             success, parsed = repair_and_parse_json(raw_text)
             if success and parsed:
+                # Validation: check if action is allowed
+                allowed_actions = ["system", "browser", "screen", "code", "conversation"]
+                action = parsed.get("action", "conversation")
+                if action not in allowed_actions:
+                    return BrainOutput(action="conversation", response=f"Error: Invalid action '{action}' returned by LLM.")
+                
                 return normalize_brain_output(parsed)
-            return normalize_brain_output(raw_text)
+            
+            return BrainOutput(action="conversation", response="Error: LLM failed to return valid JSON.")
         except Exception as e:
             logger.error(f"[Brain] Routing error: {e}")
             return BrainOutput(action="conversation", response="System error in cognitive routing.", confidence=0.0)

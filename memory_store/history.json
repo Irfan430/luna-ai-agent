@@ -34,5 +34,17 @@
     "content": "Hello! How can I assist you today?",
     "timestamp": "2026-02-20T11:52:50.431943",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "echo hello",
+    "timestamp": "2026-02-21T08:02:59.470947",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Hello from LUNA Loop\n",
+    "timestamp": "2026-02-21T08:02:59.471197",
+    "is_voice": false
   }
 ]

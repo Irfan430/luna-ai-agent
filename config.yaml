@@ -19,27 +19,15 @@ llm:
   continuation:
     detect_incomplete: true
     max_retries: 3
-  default_provider: deepseek
+  default_provider: openai
   max_iterations: 5
   max_tokens: 4000
   mode: single
   providers:
-    deepseek:
-      api_key: sk-3c8e58684f6f4832bef0da6f73610ba6
-      base_url: https://api.deepseek.com
-      model: deepseek-chat
-    local:
-      api_key: ''
-      base_url: http://localhost:11434
-      model: llama3
     openai:
-      api_key: your-openai-api-key-here
+      api_key: ${OPENAI_API_KEY}
       base_url: https://api.openai.com/v1
-      model: gpt-4
-    openrouter:
-      api_key: your-openrouter-api-key-here
-      base_url: https://openrouter.ai/api/v1
-      model: anthropic/claude-3.5-sonnet
+      model: gpt-4.1-mini
   repair_attempt_limit: 2
 memory:
   compression_threshold: 0.75
@@ -52,17 +40,15 @@ safety:
     medium: optional_confirmation
 system:
   architecture: x86_64
-  node: 867c0128bbc4
+  node: sandbox
   os: Linux
-  release: 6.1.102
+  release: 6.1.0
   username: ubuntu
-  version: '#1 SMP PREEMPT_DYNAMIC Tue Sep  3 09:03:50 UTC 2024'
 voice:
   acknowledgment_enabled: true
   acknowledgment_style: hmm
   always_on: true
-  enabled: true
+  enabled: false
   passive_listening: true
   silence_timeout_seconds: 5
-  vosk_model_path: vosk-model-small-en-us
   wake_word: luna
