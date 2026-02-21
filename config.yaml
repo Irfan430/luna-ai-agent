@@ -56,3 +56,6 @@ voice:
   passive_listening: true
   silence_timeout_seconds: 5
   wake_word: luna
+
+browser:
+  headless: false

@@ -1,11 +1,12 @@
 """
-LUNA AI Agent - OS Agent Execution Kernel (OAEK) v11.0
+LUNA AI Agent - OS Agent Execution Kernel (OAEK) v12.0
 Author: IRFAN
+Revision: Manus AI
 
 Structural Stabilization Refactor:
   - Centralized Action Router: system, browser, file, app.
+  - Improved App/Browser opening for visible GUI interaction.
   - Standardized ExecutionResult for all OS Agent intents.
-  - Support for multi-step tasks.
 """
 
 import os
@@ -15,6 +16,7 @@ import time
 import subprocess
 import logging
 import shutil
+import webbrowser
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
@@ -125,7 +127,20 @@ class ExecutionKernel:
             return ExecutionResult.failure(str(e))
 
     def _handle_browser(self, params: Dict[str, Any]) -> ExecutionResult:
-        """Handle browser actions via persistent Playwright worker."""
+        """Handle browser actions. Prefers visible system browser for 'goto'."""
+        action = params.get("action", "goto")
+        value = params.get("value", "")
+        
+        # If it's a simple navigation, use the system's default browser for visibility
+        if action == "goto" and value:
+            try:
+                if not value.startswith("http"): value = "https://" + value
+                webbrowser.open(value)
+                return ExecutionResult("success", f"Opened {value} in your default browser.", verified=True)
+            except Exception as e:
+                logger.warning(f"Failed to open system browser: {e}. Falling back to Playwright.")
+
+        # Fallback to Playwright for complex tasks (search, click, etc.)
         try:
             result = self.browser_controller.execute(params)
             if result.get("status") == "success":
@@ -179,7 +194,12 @@ class ExecutionKernel:
         
         try:
             if action == "open":
-                cmd = f"open -a '{app_name}'" if platform.system() == "Darwin" else f"xdg-open {app_name}" if platform.system() == "Linux" else f"start {app_name}"
+                # Special handling for common apps with arguments (like browser + url)
+                if " " in app_name:
+                    cmd = app_name # Assume it's a full command
+                else:
+                    cmd = f"open -a '{app_name}'" if platform.system() == "Darwin" else f"xdg-open {app_name}" if platform.system() == "Linux" else f"start {app_name}"
+                
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 return ExecutionResult("success", f"Opening app: {app_name}", verified=True)
             
