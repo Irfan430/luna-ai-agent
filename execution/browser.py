@@ -29,7 +29,7 @@ class BrowserController:
         self.current_page: Optional[Page] = None
         self._lock = threading.Lock()
 
-    def _ensure_browser(self, headless: bool = False):
+    def _ensure_browser(self, headless: bool = True):
         """Ensure browser is running, reuse if exists."""
         with self._lock:
             if not self.playwright:

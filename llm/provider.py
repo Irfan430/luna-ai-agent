@@ -247,13 +247,22 @@ class LLMManager:
                     env_var = api_key[2:-1]
                     api_key = os.environ.get(env_var, api_key)
                 
-                if not api_key.startswith("your-"):
-                    self.providers[name] = GenericOpenAIProvider(
+                if not api_key.startswith("your-") or name == "openai":
+                    # Special handling for Manus environment: use pre-configured client if available
+                    provider = GenericOpenAIProvider(
                         api_key=api_key,
                         model=cfg['model'],
                         base_url=cfg['base_url'],
                         name=name,
                     )
+                    
+                    # If it's the openai provider and we are in Manus environment, 
+                    # use the default client which is already configured.
+                    if name == "openai" and os.environ.get("OPENAI_API_KEY"):
+                        from openai import OpenAI
+                        provider.client = OpenAI()
+                        
+                    self.providers[name] = provider
                     logger.info(f"[LLMManager] Initialized provider: {name} ({cfg['model']})")
 
     def get_provider(self, name: Optional[str] = None) -> LLMProvider:

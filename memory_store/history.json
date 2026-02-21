@@ -46,5 +46,65 @@
     "content": "Hello from LUNA Loop\n",
     "timestamp": "2026-02-21T08:02:59.471197",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, who are you and what is your current mode?",
+    "timestamp": "2026-02-21T08:03:55.731827",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T08:03:55.732100",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Check the system uptime using shell command.",
+    "timestamp": "2026-02-21T08:03:55.953886",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T08:03:55.954172",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Search for 'LUNA AI Agent' on Google using the browser.",
+    "timestamp": "2026-02-21T08:03:56.209562",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T08:03:56.209967",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, who are you and what is your current mode?",
+    "timestamp": "2026-02-21T08:04:09.776609",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "I am LUNA, your fast, real-time action-based Jarvis system. My current mode is active and ready to execute your commands immediately.",
+    "timestamp": "2026-02-21T08:04:09.776994",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Check the system uptime using shell command.",
+    "timestamp": "2026-02-21T08:04:11.506808",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": " 08:04:11 up 10 days,  4:20,  1 user,  load average: 0.27, 11.37, 22.92\n",
+    "timestamp": "2026-02-21T08:04:11.507157",
+    "is_voice": false
   }
 ]
