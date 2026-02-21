@@ -247,8 +247,8 @@ class LLMManager:
                     env_var = api_key[2:-1]
                     api_key = os.environ.get(env_var, api_key)
                 
-                if not api_key.startswith("your-") or name == "openai":
-                    # Special handling for Manus environment: use pre-configured client if available
+                # Check if it's a placeholder or real key
+                if not api_key.startswith("your-") and not api_key.startswith("${"):
                     provider = GenericOpenAIProvider(
                         api_key=api_key,
                         model=cfg['model'],
@@ -256,19 +256,28 @@ class LLMManager:
                         name=name,
                     )
                     
-                    # If it's the openai provider and we are in Manus environment, 
-                    # use the default client which is already configured.
-                    if name == "openai" and os.environ.get("OPENAI_API_KEY"):
-                        from openai import OpenAI
-                        provider.client = OpenAI()
-                        
+                    # Special handling for Manus environment testing
+                    # If we're in Manus and the provider matches the environment's capability
+                    if os.environ.get("OPENAI_API_KEY") and name == "openai":
+                        provider.client = OpenAI() # Use Manus pre-configured client
+                    elif os.environ.get("OPENAI_API_KEY") and name == "deepseek":
+                        # For testing in Manus, we can map deepseek to the pre-configured client 
+                        # IF we want to verify the system logic. But for production, it uses the key.
+                        # We only do this if the user hasn't provided a real key.
+                        pass
+
                     self.providers[name] = provider
                     logger.info(f"[LLMManager] Initialized provider: {name} ({cfg['model']})")
 
     def get_provider(self, name: Optional[str] = None) -> LLMProvider:
         name = name or self.default_provider_name
         if name not in self.providers:
-            raise ValueError(f"Provider '{name}' not configured or initialized.")
+            # Fallback to first available if default fails
+            if self.providers:
+                available = list(self.providers.keys())[0]
+                logger.warning(f"Default provider '{name}' not available. Falling back to '{available}'.")
+                return self.providers[available]
+            raise ValueError(f"No LLM providers configured or initialized. Please check API keys.")
         return self.providers[name]
 
     def _log_provider_switch(self, from_name: str, to_name: str, reason: str):
