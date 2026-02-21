@@ -1,0 +1,62 @@
+/* LUNA AI Agent - Dark Theme Stylesheet */
+
+QMainWindow, QWidget {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+QTextEdit {
+    background-color: #252526;
+    border: 1px solid #3e3e3e;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+QLineEdit {
+    background-color: #3c3c3c;
+    border: 1px solid #3e3e3e;
+    border-radius: 4px;
+    padding: 8px;
+    color: white;
+}
+
+QPushButton {
+    background-color: #007acc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #0062a3;
+}
+
+QLabel#statusLabel {
+    font-weight: bold;
+    color: #007acc;
+}
+
+QComboBox {
+    background-color: #3c3c3c;
+    border: 1px solid #3e3e3e;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QProgressBar {
+    border: 1px solid #3e3e3e;
+    border-radius: 4px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #007acc;
+}
+
+QCheckBox::indicator {
+    width: 13px;
+    height: 13px;
+}

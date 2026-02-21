@@ -19,7 +19,7 @@ from gui.monitor import start_gui
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format=\'%(asctime)s - %(name)s - %(levelname)s - %(message)s\',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("luna.log"),
         logging.StreamHandler()
@@ -35,7 +35,7 @@ def load_config():
         logger.error(f"Config file not found: {config_path}")
         sys.exit(1)
     
-    with open(config_path, \'r\') as f:
+    with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
 def main():
