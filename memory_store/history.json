@@ -142,5 +142,29 @@
     "content": "Searched for 'luna ai agent' on Google.",
     "timestamp": "2026-02-21T08:04:37.178370",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Check the current system uptime.",
+    "timestamp": "2026-02-21T08:17:06.414360",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T08:17:06.414765",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Check the current system uptime.",
+    "timestamp": "2026-02-21T08:17:20.409782",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": " 08:17:20 up 10 days,  4:33,  1 user,  load average: 0.10, 0.85, 9.79\n",
+    "timestamp": "2026-02-21T08:17:20.410189",
+    "is_voice": false
   }
 ]
