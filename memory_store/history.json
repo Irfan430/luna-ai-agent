@@ -178,5 +178,17 @@
     "content": "System error in cognitive routing.",
     "timestamp": "2026-02-21T08:19:32.272836",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, please give a short greeting.",
+    "timestamp": "2026-02-21T08:24:28.623996",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Hello! I'm LUNA, ready to assist you with real-time actions.",
+    "timestamp": "2026-02-21T08:24:28.624486",
+    "is_voice": false
   }
 ]

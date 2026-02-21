@@ -25,7 +25,7 @@ llm:
   mode: single
   providers:
     deepseek:
-      api_key: sk-3c8e58684f6f4832bef0da6f73610ba6
+      api_key: sk-af8395cfa3a24a6d86247567d8d9715c
       base_url: https://api.deepseek.com
       model: deepseek-chat
     openai:

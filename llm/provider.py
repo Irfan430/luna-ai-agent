@@ -241,36 +241,22 @@ class LLMManager:
         providers_config = self.config.get('llm', {}).get('providers', {})
         for name, cfg in providers_config.items():
             api_key = cfg.get('api_key')
-            if api_key:
-                # 1. Try to expand if it's an environment variable placeholder
-                if api_key.startswith("${") and api_key.endswith("}"):
-                    env_var = api_key[2:-1]
-                    env_val = os.environ.get(env_var)
-                    if env_val:
-                        api_key = env_val
-                    else:
-                        # If env var not found, keep it as is (might be a real key starting with ${ or we skip)
-                        pass
-                
-                # 2. If it's a placeholder "your-...", skip it
-                if api_key.startswith("your-"):
-                    logger.warning(f"[LLMManager] Provider '{name}' skipped: Placeholder API key detected.")
-                    continue
+            
+            # 1. Skip if API key is missing or placeholder
+            if not api_key or api_key.startswith("your-") or api_key.startswith("${"):
+                logger.warning(f"[LLMManager] Provider '{name}' skipped: API key missing or placeholder.")
+                continue
 
-                # 3. Initialize provider with the key (either direct from config or from env)
-                provider = GenericOpenAIProvider(
-                    api_key=api_key,
-                    model=cfg['model'],
-                    base_url=cfg['base_url'],
-                    name=name,
-                )
-                
-                # Special handling for Manus environment verification
-                if os.environ.get("OPENAI_API_KEY") and name == "openai":
-                    provider.client = OpenAI()
-
-                self.providers[name] = provider
-                logger.info(f"[LLMManager] Initialized provider: {name} ({cfg['model']})")
+            # 2. Initialize provider with the key DIRECTLY from config
+            provider = GenericOpenAIProvider(
+                api_key=api_key,
+                model=cfg['model'],
+                base_url=cfg['base_url'],
+                name=name,
+            )
+            
+            self.providers[name] = provider
+            logger.info(f"[LLMManager] Initialized provider: {name} ({cfg['model']})")
 
     def get_provider(self, name: Optional[str] = None) -> LLMProvider:
         name = name or self.default_provider_name
@@ -294,7 +280,7 @@ class LLMManager:
                 self.providers["manus_default"] = manus_provider
                 return manus_provider
                 
-            raise ValueError(f"No LLM providers configured or initialized. Please check your config.yaml and API keys.")
+            raise ValueError(f"No LLM providers configured or initialized. Please check your config.yaml and ensure your API key is correctly placed in 'api_key'.")
         return self.providers[name]
 
     def _log_provider_switch(self, from_name: str, to_name: str, reason: str):
