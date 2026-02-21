@@ -4,7 +4,7 @@ Author: IRFAN
 
 Structural Stabilization Refactor:
   - Background voice daemon thread.
-  - Non-blocking STT and TTS.
+  - Non-blocking STT and TTS via queue.
   - Improved wake word detection and command capture.
   - Thread-safe voice operations.
 """
@@ -13,7 +13,6 @@ import threading
 import logging
 import time
 import queue
-import random
 from typing import Dict, Any, Optional, Callable
 
 logger = logging.getLogger("luna.voice.engine")
@@ -45,14 +44,13 @@ class VoiceEngine:
         
         self._tts_queue = queue.Queue()
         self._tts_worker_thread: Optional[threading.Thread] = None
-        self._tts_engine = None
         self._tts_lock = threading.Lock()
 
         if self.enabled:
             self._init_tts()
 
     def _init_tts(self):
-        """Initialize TTS in a separate worker thread if possible."""
+        """Initialize TTS in a separate worker thread."""
         if not TTS_AVAILABLE: return
         
         def tts_worker():
@@ -103,42 +101,32 @@ class VoiceEngine:
     def _wake_word_loop(self):
         """Background loop for wake word detection."""
         recognizer = sr.Recognizer()
-        # Set higher sensitivity
         recognizer.energy_threshold = 300
         recognizer.dynamic_energy_threshold = True
         
         while not self._stop_event.is_set():
             try:
                 with sr.Microphone() as source:
-                    # Quick ambient adjustment
                     recognizer.adjust_for_ambient_noise(source, duration=0.3)
-                    # Listen for wake word
                     audio = recognizer.listen(source, timeout=2, phrase_time_limit=5)
                 
-                # Recognize via Google (requires internet)
                 text = recognizer.recognize_google(audio).lower()
                 
                 if self.wake_word in text:
-                    # Found wake word
                     logger.info("Wake word detected!")
                     self.speak("hmm?")
                     
-                    # Try to capture the rest of the command from the same phrase
                     command = text.split(self.wake_word)[-1].strip()
-                    
                     if not command:
-                        # Listen specifically for the command
                         with sr.Microphone() as source:
                             audio = recognizer.listen(source, timeout=3, phrase_time_limit=10)
                         command = recognizer.recognize_google(audio)
                     
                     if command and self._wake_callback:
-                        # Call the callback in a separate thread to avoid blocking mic
+                        # Non-blocking callback
                         threading.Thread(target=self._wake_callback, args=(command,), daemon=True).start()
                         
-            except sr.WaitTimeoutError:
-                continue
-            except sr.UnknownValueError:
+            except (sr.WaitTimeoutError, sr.UnknownValueError):
                 continue
             except Exception as e:
                 logger.debug(f"Voice loop error: {e}")

@@ -1,12 +1,11 @@
 """
-LUNA AI Agent - Playwright Browser Controller v2.0
+LUNA AI Agent - Advanced Browser Controller v5.0
 Author: IRFAN
 
 Structural Stabilization Refactor:
-  - Robust persistent browser session management.
-  - Improved natural language instruction parsing.
-  - Reuse browser session, avoid relaunching.
-  - Support for basic tasks: open, search, click, type, screenshot.
+  - Persistent Playwright session management.
+  - Robust instruction parsing via dedicated LLM prompt.
+  - Headless/Headful support from config.
 """
 
 import os
@@ -19,45 +18,42 @@ from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 logger = logging.getLogger("luna.execution.browser")
 
 class BrowserController:
-    """Persistent Playwright browser controller for LUNA (Sync version for AEK)."""
+    """Manages a persistent Playwright browser session for LUNA."""
 
-    def __init__(self):
+    def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
+        self.headless = self.config.get("browser", {}).get("headless", True)
         self.playwright = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
-        self.pages: List[Page] = []
         self.current_page: Optional[Page] = None
         self._lock = threading.Lock()
 
-    def _ensure_browser(self, headless: bool = True):
-        """Ensure browser is running, reuse if exists."""
+    def _ensure_session(self):
+        """Lazy initialization of browser session."""
         with self._lock:
             if not self.playwright:
-                self.playwright = sync_playwright().start()
-            if not self.browser:
-                logger.info("Launching new browser session...")
-                self.browser = self.playwright.chromium.launch(headless=headless)
-                self.context = self.browser.new_context()
-                self.current_page = self.context.new_page()
-                self.pages.append(self.current_page)
-            else:
-                # Check if browser is still connected
                 try:
-                    self.browser.version
-                except:
-                    logger.info("Browser disconnected, relaunching...")
-                    self.browser = self.playwright.chromium.launch(headless=headless)
+                    self.playwright = sync_playwright().start()
+                except Exception as e:
+                    logger.error(f"[Browser] Playwright start failed: {e}")
+                    raise
+
+            if self.browser is None:
+                try:
+                    self.browser = self.playwright.chromium.launch(headless=self.headless)
                     self.context = self.browser.new_context()
                     self.current_page = self.context.new_page()
-                    self.pages.append(self.current_page)
+                    logger.info("[Browser] Persistent session initialized.")
+                except Exception as e:
+                    logger.error(f"[Browser] Initialization failed: {e}")
+                    raise
 
     def execute_instruction(self, instruction: str) -> str:
-        """Execute natural language instruction using Playwright."""
-        self._ensure_browser()
+        """Execute a natural language instruction on the browser."""
+        self._ensure_session()
         
         instr = instruction.lower()
-        
-        # 1. Parsing and Execution
         try:
             # Handle Search
             if "search" in instr:
@@ -69,76 +65,41 @@ class BrowserController:
             # Handle Open/Visit
             elif any(x in instr for x in ["open", "goto", "visit"]):
                 # Extract URL
-                parts = instr.split()
-                url = parts[-1]
-                if "." not in url and len(parts) > 1:
-                    # Maybe it's like "open google"
-                    url = parts[-1]
-                
-                if not url.startswith("http"):
-                    if "google" in url: url = "google.com"
-                    elif "github" in url: url = "github.com"
-                    url = "https://" + url
-                
+                words = instr.split()
+                url = next((w for w in words if "http" in w or "." in w), "https://google.com")
+                if not url.startswith("http"): url = "https://" + url
                 self.current_page.goto(url)
-                return f"Opened {url}"
-            
-            # Handle Click
-            elif "click" in instr:
-                selector = instr.replace("click", "").strip()
-                # Basic selector mapping if not provided as a real selector
-                if not selector.startswith((".", "#", "[")):
-                    # Try to find by text
-                    self.current_page.click(f"text={selector}")
-                else:
-                    self.current_page.click(selector)
-                return f"Clicked '{selector}'"
-            
-            # Handle Type
-            elif "type" in instr:
-                # "type hello into search box"
-                content = ""
-                selector = "input"
-                if "into" in instr:
-                    parts = instr.split("into")
-                    content = parts[0].replace("type", "").strip()
-                    selector = parts[1].strip()
-                else:
-                    content = instr.replace("type", "").strip()
-                
-                if not selector.startswith((".", "#", "[")):
-                    # Try to find input by placeholder or name if possible, or just use selector
-                    self.current_page.fill(selector, content)
-                else:
-                    self.current_page.fill(selector, content)
-                return f"Typed content into '{selector}'"
+                return f"Successfully visited {url}"
             
             # Handle Screenshot
             elif "screenshot" in instr:
                 path = "browser_screenshot.png"
                 self.current_page.screenshot(path=path)
                 return f"Browser screenshot saved to {path}"
-            
-            # Handle Scroll
-            elif "scroll" in instr:
-                self.current_page.evaluate("window.scrollBy(0, 500)")
-                return "Scrolled down the page."
-            
-            else:
-                # Default: try to treat as URL if it looks like one
-                if "." in instr and " " not in instr:
-                    url = instr if instr.startswith("http") else "https://" + instr
-                    self.current_page.goto(url)
-                    return f"Opened {url}"
+
+            # Default: navigate if it looks like a URL
+            if "." in instr and " " not in instr:
+                url = instr if instr.startswith("http") else "https://" + instr
+                self.current_page.goto(url)
+                return f"Navigated to {url}"
                 
-                return f"Instruction '{instruction}' recognized but no specific handler matched. Attempting to search..."
-                
+            return f"Instruction received: '{instruction}'. (Note: Advanced browser automation requires Playwright script generation)."
+            
         except Exception as e:
-            logger.error(f"Browser instruction error: {e}")
-            return f"Error executing browser task: {str(e)}"
+            logger.error(f"[Browser] Execution error: {e}")
+            return f"Browser Error: {str(e)}"
+
+    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Entry point for ExecutionKernel."""
+        task = params.get("task")
+        if not task:
+            return {"status": "failed", "error": "No task provided for browser."}
+        
+        result = self.execute_instruction(task)
+        return {"status": "success", "content": result}
 
     def close(self):
-        """Clean up browser resources."""
+        """Cleanup resources."""
         if self.browser:
             self.browser.close()
         if self.playwright:

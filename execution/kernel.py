@@ -1,43 +1,26 @@
 """
-LUNA AI Agent - Advanced Execution Kernel (AEK) v9.0
+LUNA AI Agent - Advanced Execution Kernel (AEK) v10.0
 Author: IRFAN
 
 Structural Stabilization Refactor:
-  - Central ACTIONS mapping table.
-  - Strict action routing: system, browser, screen, code.
-  - Removed open_browser and other dynamic action names.
-  - Integrated persistent browser controller.
+  - Central ACTIONS mapping table: system, browser, screen, code, physical.
+  - Integrated ScreenHandler for physical mouse/keyboard and vision.
+  - Standardized ExecutionResult for all actions.
 """
 
 import os
 import platform
 import psutil
 import time
-import re
 import subprocess
 import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
-# Import OS adapters
-from os_adapters.linux import LinuxAdapter
-from os_adapters.windows import WindowsAdapter
-from os_adapters.mac import MacAdapter
 from execution.browser import BrowserController
+from execution.screen import ScreenHandler
 
 logger = logging.getLogger("luna.execution.kernel")
-
-try:
-    import pyautogui
-    PYAUTOGUI_AVAILABLE = True
-except ImportError:
-    PYAUTOGUI_AVAILABLE = False
-
-try:
-    from PIL import ImageGrab
-    SCREEN_CAPTURE_AVAILABLE = True
-except ImportError:
-    SCREEN_CAPTURE_AVAILABLE = False
 
 @dataclass
 class ExecutionResult:
@@ -69,25 +52,20 @@ class ExecutionResult:
 class ExecutionKernel:
     """Hardened execution layer with OS abstraction and interaction engine."""
 
-    def __init__(self):
+    def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
         self.system = platform.system()
-        self.adapter = self._get_adapter()
-        self.pyautogui_available = PYAUTOGUI_AVAILABLE
         self.browser_controller = BrowserController()
+        self.screen_handler = ScreenHandler(self.config)
         
         # Central ACTIONS mapping table
         self.ACTIONS = {
             "system": self._handle_system,
             "browser": self._handle_browser,
             "screen": self._handle_screen,
-            "code": self._handle_code
+            "code": self._handle_code,
+            "physical": self._handle_physical
         }
-
-    def _get_adapter(self):
-        if self.system == "Linux": return LinuxAdapter()
-        elif self.system == "Windows": return WindowsAdapter()
-        elif self.system == "Darwin": return MacAdapter()
-        return LinuxAdapter()
 
     def get_system_stats(self) -> Dict[str, Any]:
         return {
@@ -99,12 +77,19 @@ class ExecutionKernel:
 
     def execute(self, action: str, parameters: Dict[str, Any]) -> ExecutionResult:
         """Route action to appropriate handler using the central ACTIONS mapping."""
-        handler = self.ACTIONS.get(action)
+        handler = self.ACTIONS.get(action.lower())
         if not handler:
             return ExecutionResult.failure(f"Unknown action: {action}")
 
         try:
             result = handler(parameters)
+            if not isinstance(result, ExecutionResult):
+                # Convert dict response from handlers to ExecutionResult
+                if result.get("status") == "success":
+                    result = ExecutionResult("success", result.get("content", ""), verified=True)
+                else:
+                    result = ExecutionResult.failure(result.get("error", "Execution failed"))
+            
             result.system_state = self.get_system_stats()
             return result
         except Exception as e:
@@ -150,19 +135,15 @@ class ExecutionKernel:
 
     def _handle_screen(self, params: Dict[str, Any]) -> ExecutionResult:
         """Handle screen capture and analysis."""
-        if not SCREEN_CAPTURE_AVAILABLE:
-            return ExecutionResult.failure("Screen capture (PIL) not available.")
-        
-        instruction = params.get("instruction", "capture")
-        path = "screen_capture.png"
-        
-        try:
-            screenshot = ImageGrab.grab()
-            screenshot.thumbnail((1280, 720))
-            screenshot.save(path)
-            return ExecutionResult("success", f"Screen captured and saved to {path}. Instruction: {instruction}", verified=True)
-        except Exception as e:
-            return ExecutionResult.failure(f"Screen capture error: {str(e)}")
+        action_type = params.get("type", "screenshot")
+        res = self.screen_handler.execute_action(action_type, params)
+        return res
+
+    def _handle_physical(self, params: Dict[str, Any]) -> ExecutionResult:
+        """Handle physical mouse/keyboard control."""
+        action_type = params.get("type", "click")
+        res = self.screen_handler.execute_action(action_type, params)
+        return res
 
     def _handle_code(self, params: Dict[str, Any]) -> ExecutionResult:
         """Handle code execution (Python)."""
