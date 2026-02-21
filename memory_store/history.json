@@ -106,5 +106,41 @@
     "content": " 08:04:11 up 10 days,  4:20,  1 user,  load average: 0.27, 11.37, 22.92\n",
     "timestamp": "2026-02-21T08:04:11.507157",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, who are you and what is your current mode?",
+    "timestamp": "2026-02-21T08:04:26.284207",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "I am LUNA, your fast, real-time action-based Jarvis system. My current mode is active and ready to execute your commands immediately.",
+    "timestamp": "2026-02-21T08:04:26.284589",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Check the system uptime using shell command.",
+    "timestamp": "2026-02-21T08:04:27.401246",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": " 08:04:27 up 10 days,  4:20,  1 user,  load average: 0.29, 10.82, 22.56\n",
+    "timestamp": "2026-02-21T08:04:27.401687",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Search for 'LUNA AI Agent' on Google using the browser.",
+    "timestamp": "2026-02-21T08:04:37.177880",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Searched for 'luna ai agent' on Google.",
+    "timestamp": "2026-02-21T08:04:37.178370",
+    "is_voice": false
   }
 ]
