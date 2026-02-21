@@ -1,20 +1,21 @@
 """
-LUNA AI Agent - OS Agent Entry Point v11.0
+LUNA AI Agent - Unified Entry Point v12.0
 Author: IRFAN
+Revision: Manus AI
 
-Structural Stabilization Refactor:
-  - Initialize Task Orchestrator and Persistent Browser.
-  - Launch non-blocking GUI monitor.
-  - Handle graceful shutdown.
+Unified Entry Point:
+  - Supports both GUI and CLI modes.
+  - Usage: 
+      python main.py         (Default: GUI)
+      python main.py --cli   (CLI Mode)
 """
-
 import os
 import yaml
 import logging
 import threading
 import sys
+import argparse
 from core.loop import CognitiveLoop
-from gui.monitor import start_gui
 
 # Configure logging
 logging.basicConfig(
@@ -25,7 +26,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
 logger = logging.getLogger("luna.main")
 
 def load_config():
@@ -38,13 +38,63 @@ def load_config():
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
+def run_cli(loop):
+    """Run LUNA in Command Line Interface mode."""
+    print("\n" + "="*50)
+    print(" LUNA AI Agent - CLI Mode")
+    print(" Type 'exit' or 'quit' to stop.")
+    print("="*50 + "\n")
+    
+    while True:
+        try:
+            user_input = input("User > ").strip()
+            if not user_input:
+                continue
+            if user_input.lower() in ['exit', 'quit']:
+                break
+            
+            print("LUNA is thinking...")
+            loop.run(user_input)
+            
+            # Wait for processing
+            import time
+            while loop.task_queue.qsize() > 0:
+                time.sleep(0.5)
+            
+            # Small delay for memory update
+            time.sleep(1)
+            if loop.memory.short_term:
+                last_msg = loop.memory.short_term[-1]
+                if last_msg['role'] == 'assistant':
+                    print(f"LUNA > {last_msg['content']}")
+                else:
+                    # Check if there's a response in the history
+                    found = False
+                    for msg in reversed(loop.memory.short_term):
+                        if msg['role'] == 'assistant':
+                            print(f"LUNA > {msg['content']}")
+                            found = True
+                            break
+                    if not found:
+                        print("LUNA > (Action executed successfully)")
+            
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            logger.error(f"CLI Error: {e}")
+            print(f"Error: {e}")
+
 def main():
+    parser = argparse.ArgumentParser(description="LUNA AI Agent")
+    parser.add_argument("--cli", action="store_true", help="Run in CLI mode instead of GUI")
+    args = parser.parse_args()
+
     logger.info("--- LUNA OS AGENT STARTING ---")
     
     # 1. Load Config
     config = load_config()
     
-    # 2. Initialize Cognitive Loop (Brain + Orchestrator)
+    # 2. Initialize Cognitive Loop
     try:
         loop = CognitiveLoop(config)
         logger.info("Cognitive Loop initialized successfully.")
@@ -57,17 +107,24 @@ def main():
         loop.start_voice_mode()
         logger.info("Voice passive listening started.")
 
-    # 4. Launch GUI (Main Thread)
-    try:
-        logger.info("Launching GUI...")
-        start_gui(loop)
-    except Exception as e:
-        logger.error(f"GUI Error: {e}")
-    finally:
-        # Graceful Shutdown
-        logger.info("Shutting down LUNA...")
-        loop.stop()
-        logger.info("Shutdown complete.")
+    # 4. Launch Mode
+    if args.cli:
+        try:
+            run_cli(loop)
+        finally:
+            logger.info("Shutting down LUNA...")
+            loop.stop()
+    else:
+        try:
+            from gui.monitor import start_gui
+            logger.info("Launching GUI...")
+            start_gui(loop)
+        except Exception as e:
+            logger.error(f"GUI Error: {e}")
+            print(f"GUI failed to start. Try running with --cli. Error: {e}")
+        finally:
+            logger.info("Shutting down LUNA...")
+            loop.stop()
 
 if __name__ == "__main__":
     main()

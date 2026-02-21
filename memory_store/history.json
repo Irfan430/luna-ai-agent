@@ -262,5 +262,77 @@
     "content": "File created: test_os.txt",
     "timestamp": "2026-02-21T09:03:57.663891",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello, LUNA!",
+    "timestamp": "2026-02-21T09:21:40.680543",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Hello! How can I help?",
+    "timestamp": "2026-02-21T09:21:40.681136",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello, LUNA!",
+    "timestamp": "2026-02-21T09:27:08.892248",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Hello! How can I help?",
+    "timestamp": "2026-02-21T09:27:08.892711",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, who are you?",
+    "timestamp": "2026-02-21T09:30:21.334545",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T09:30:21.335092",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Check the current directory files.",
+    "timestamp": "2026-02-21T09:30:24.975896",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T09:30:24.976632",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello, LUNA!",
+    "timestamp": "2026-02-21T09:30:38.941285",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Hello! How can I help?",
+    "timestamp": "2026-02-21T09:30:38.941896",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, list files in current directory.",
+    "timestamp": "2026-02-21T09:38:56.741838",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T09:38:56.742412",
+    "is_voice": false
   }
 ]
