@@ -1,5 +1,5 @@
 """
-LUNA AI Agent - OS Agent GUI v11.1
+LUNA AI Agent - OS Agent GUI v12.0
 Author: IRFAN
 Revision: Manus AI
 
@@ -7,7 +7,7 @@ Structural Stabilization Refactor:
   - Non-blocking GUI interaction with Task Orchestrator.
   - Mode and Voice toggles.
   - Real-time status and memory display.
-  - Fixed font setting bug.
+  - Fixed Layout attribute errors (QVBoxLayout.setFixedWidth).
   - Externalized stylesheet.
 """
 import sys
@@ -51,7 +51,9 @@ class LUNAMonitor(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QHBoxLayout(central_widget)
         
-        left_panel = QVBoxLayout()
+        # Left Panel
+        left_panel_widget = QWidget()
+        left_panel = QVBoxLayout(left_panel_widget)
         
         header = QHBoxLayout()
         self.status_label = QLabel("Status: Ready")
@@ -88,6 +90,7 @@ class LUNAMonitor(QMainWindow):
         input_layout.addWidget(self.send_btn)
         left_panel.addLayout(input_layout)
         
+        # Right Panel
         right_panel_widget = QWidget()
         right_panel_widget.setFixedWidth(300)
         right_panel = QVBoxLayout(right_panel_widget)
@@ -110,15 +113,19 @@ class LUNAMonitor(QMainWindow):
         self.log_display.setFont(log_font)
         right_panel.addWidget(self.log_display)
         
-        layout.addLayout(left_panel, 3)
+        # Main Layout Assembly
+        layout.addWidget(left_panel_widget, 3)
         layout.addWidget(right_panel_widget, 1)
 
     def load_stylesheet(self):
         style_path = os.path.join(os.path.dirname(__file__), "style.qss")
-        try:
-            with open(style_path, "r") as f:
-                self.setStyleSheet(f.read())
-        except FileNotFoundError:
+        if os.path.exists(style_path):
+            try:
+                with open(style_path, "r") as f:
+                    self.setStyleSheet(f.read())
+            except Exception as e:
+                logger.error(f"Error loading stylesheet: {e}")
+        else:
             logger.warning("Stylesheet (style.qss) not found. Using default style.")
 
     def send_command(self):
