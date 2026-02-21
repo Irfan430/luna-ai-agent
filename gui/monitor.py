@@ -1,13 +1,13 @@
 """
-LUNA AI Agent - Professional GUI v8.0
+LUNA AI Agent - Professional GUI v9.0
 Author: IRFAN
 
-Phase 6 & 7: Two-Way Voice System & GUI Behavior Fix
-  - While task running: Send button becomes STOP, Disable input field.
-  - STOP button interrupts execution thread.
-  - Voice button: Visually change when active, Show "Listening...", "Passive Mode".
-  - Live transcription in chat.
-  - System tray icon when minimized.
+Phase 7 & 8: Performance Mode & GUI Upgrade
+  - FAST / AGENT mode switch.
+  - Voice On/Off toggle.
+  - Live voice transcription.
+  - Action log & execution result.
+  - Minimize without killing voice.
 """
 
 import sys
@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QLineEdit, QPushButton, QLabel, QProgressBar,
     QTabWidget, QListWidget, QFrame, QSplitter, QScrollArea,
     QTableWidget, QTableWidgetItem, QHeaderView, QStatusBar,
-    QGroupBox, QCheckBox, QSystemTrayIcon, QMenu
+    QGroupBox, QCheckBox, QSystemTrayIcon, QMenu, QComboBox
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QColor, QIcon, QAction
@@ -91,7 +91,6 @@ class MonitorWindow(QMainWindow):
         self.init_ui()
         self.init_tray()
         
-        # Start passive listening in a separate thread if enabled
         if self.voice_engine.enabled:
             QTimer.singleShot(1000, self.start_voice_system)
         
@@ -100,7 +99,7 @@ class MonitorWindow(QMainWindow):
         self.stats_timer.start(2000)
 
     def init_ui(self):
-        self.setWindowTitle("LUNA 8.0 — COGNITIVE OPERATING SYSTEM")
+        self.setWindowTitle("LUNA 9.0 — REAL-TIME SYSTEM COMPANION")
         self.setMinimumSize(1200, 800)
         
         central = QWidget()
@@ -137,15 +136,15 @@ class MonitorWindow(QMainWindow):
         input_layout.addWidget(self.action_btn)
         chat_layout.addLayout(input_layout)
         
-        # Timeline
+        # Timeline / Action Log
         self.timeline = QTableWidget(0, 4)
-        self.timeline.setHorizontalHeaderLabels(["Timestamp", "Action", "Status", "Error/Result"])
+        self.timeline.setHorizontalHeaderLabels(["Timestamp", "Action", "Status", "Result"])
         self.timeline.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         
         left_panel.addWidget(chat_widget)
         left_panel.addWidget(self.timeline)
         
-        # Right: Monitors
+        # Right: Monitors & Settings
         right_panel = QTabWidget()
         right_panel.setFixedWidth(350)
         
@@ -159,16 +158,23 @@ class MonitorWindow(QMainWindow):
         mon_layout.addWidget(QLabel("RAM USAGE"))
         mon_layout.addWidget(self.ram_bar)
         
-        self.provider_lbl = QLabel(f"Provider: {self.config['llm']['default_provider']}")
-        self.risk_lbl = QLabel("Risk: Low")
-        self.token_lbl = QLabel("Tokens: 0")
+        # Mode Switch
+        mon_layout.addWidget(QLabel("PERFORMANCE MODE"))
+        self.mode_switch = QComboBox()
+        self.mode_switch.addItems(["FAST", "AGENT"])
+        self.mode_switch.currentTextChanged.connect(self.change_mode)
+        mon_layout.addWidget(self.mode_switch)
+        
+        # Voice Toggle
+        self.voice_toggle = QCheckBox("Always-on Voice")
+        self.voice_toggle.setChecked(self.voice_engine.enabled)
+        self.voice_toggle.stateChanged.connect(self.toggle_voice_system)
+        mon_layout.addWidget(self.voice_toggle)
+        
         self.voice_status_lbl = QLabel("Voice: Passive Mode")
         self.voice_status_lbl.setStyleSheet("color: gray;")
-        
-        mon_layout.addWidget(self.provider_lbl)
-        mon_layout.addWidget(self.risk_lbl)
-        mon_layout.addWidget(self.token_lbl)
         mon_layout.addWidget(self.voice_status_lbl)
+        
         mon_layout.addStretch()
         
         # Config Tab
@@ -184,20 +190,16 @@ class MonitorWindow(QMainWindow):
     def init_tray(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
-
         self.tray_icon = QSystemTrayIcon(self)
         icon_path = "architecture.png"
         if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
-        
         self.tray_icon.setToolTip("LUNA AI Agent")
-        
         menu = QMenu()
         show_action = QAction("Show", self)
         show_action.triggered.connect(self.showNormal)
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(QApplication.instance().quit)
-        
         menu.addAction(show_action)
         menu.addAction(quit_action)
         self.tray_icon.setContextMenu(menu)
@@ -206,7 +208,19 @@ class MonitorWindow(QMainWindow):
     def update_stats(self):
         self.cpu_bar.setValue(int(psutil.cpu_percent()))
         self.ram_bar.setValue(int(psutil.virtual_memory().percent))
-        self.token_lbl.setText(f"Tokens: {self.loop.memory_system.get_token_count()}")
+
+    def change_mode(self, mode):
+        self.loop.mode = mode
+        self.chat_display.append(f"<i>System: Switched to {mode} mode.</i>")
+
+    def toggle_voice_system(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.voice_engine.enabled = enabled
+        if enabled:
+            self.start_voice_system()
+        else:
+            self.voice_engine.stop_passive_listening()
+            self.voice_status_lbl.setText("Voice: Disabled")
 
     def handle_action(self):
         if self.action_btn.text() == "Send":
@@ -217,15 +231,11 @@ class MonitorWindow(QMainWindow):
     def send_goal(self):
         goal = self.input_field.text().strip()
         if not goal: return
-        
         self.chat_display.append(f"<b>YOU:</b> {goal}")
         self.input_field.clear()
-        
-        # Phase 7: Disable input, change button to STOP
         self.input_field.setEnabled(False)
         self.action_btn.setText("STOP")
         self.action_btn.setStyleSheet("background-color: #d13438; color: white; padding: 8px 20px;")
-        
         self.worker = AgentWorker(self.loop, goal)
         self.worker.finished.connect(self.handle_result)
         self.worker.start()
@@ -238,24 +248,13 @@ class MonitorWindow(QMainWindow):
 
     def handle_result(self, result):
         self.chat_display.append(f"<b>LUNA:</b> {result.content}")
-        
         row = self.timeline.rowCount()
         self.timeline.insertRow(row)
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        action_name = "Cognitive Task"
-        status = result.status.upper()
-        error_or_result = result.error if result.status == "failed" else "Success"
-        
+        timestamp = time.strftime("%H:%M:%S")
         self.timeline.setItem(row, 0, QTableWidgetItem(timestamp))
-        self.timeline.setItem(row, 1, QTableWidgetItem(action_name))
-        self.timeline.setItem(row, 2, QTableWidgetItem(status))
-        self.timeline.setItem(row, 3, QTableWidgetItem(error_or_result))
-        
-        if result.status == "success":
-            self.timeline.item(row, 2).setForeground(QColor("green"))
-        else:
-            self.timeline.item(row, 2).setForeground(QColor("red"))
-            
+        self.timeline.setItem(row, 1, QTableWidgetItem("Action"))
+        self.timeline.setItem(row, 2, QTableWidgetItem(result.status.upper()))
+        self.timeline.setItem(row, 3, QTableWidgetItem(result.content[:50] + "..."))
         self.reset_ui()
 
     def reset_ui(self):
@@ -266,7 +265,6 @@ class MonitorWindow(QMainWindow):
     def start_voice_system(self):
         self.voice_engine.start_passive_listening(self.handle_voice_command)
         self.voice_status_lbl.setText("Voice: Passive Mode")
-        self.voice_status_lbl.setStyleSheet("color: gray;")
 
     def handle_voice_command(self, command):
         self.chat_display.append(f"<b>YOU (voice):</b> {command}")
@@ -274,22 +272,13 @@ class MonitorWindow(QMainWindow):
         self.send_goal()
 
     def toggle_voice(self, checked):
-        # Phase 6: Voice UI Improvements
         if checked:
             self.voice_btn.setStyleSheet("background-color: #28a745; color: white;")
             self.voice_status_lbl.setText("Voice: Listening...")
-            self.voice_status_lbl.setStyleSheet("color: #28a745;")
             self.chat_display.append("<i>Voice system: Active Listening...</i>")
-            # Trigger active listen
-            cmd = self.voice_engine.listen()
-            if cmd:
-                self.handle_voice_command(cmd)
-            self.voice_btn.setChecked(False)
         else:
             self.voice_btn.setStyleSheet("")
             self.voice_status_lbl.setText("Voice: Passive Mode")
-            self.voice_status_lbl.setStyleSheet("color: gray;")
-            self.chat_display.append("<i>Voice system: Passive Mode.</i>")
 
 def run_gui(config):
     app = QApplication(sys.argv)

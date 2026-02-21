@@ -25,12 +25,19 @@ from dataclasses import dataclass, field
 from os_adapters.linux import LinuxAdapter
 from os_adapters.windows import WindowsAdapter
 from os_adapters.mac import MacAdapter
+from execution.browser import BrowserController
 
 try:
     import pyautogui
     PYAUTOGUI_AVAILABLE = True
 except ImportError:
     PYAUTOGUI_AVAILABLE = False
+
+try:
+    from PIL import ImageGrab
+    SCREEN_CAPTURE_AVAILABLE = True
+except ImportError:
+    SCREEN_CAPTURE_AVAILABLE = False
 
 @dataclass
 class ExecutionResult:
@@ -62,6 +69,7 @@ class ExecutionKernel:
         self.system = platform.system()
         self.adapter = self._get_adapter()
         self.pyautogui_available = PYAUTOGUI_AVAILABLE
+        self.browser_controller = BrowserController()
 
     def _get_adapter(self):
         if self.system == "Linux": return LinuxAdapter()
@@ -94,6 +102,8 @@ class ExecutionKernel:
             "browser_search": self._browser_search,
             "media_control": self._media_control,
             "system_info": self._get_system_info,
+            "browser": self._browser_action,
+            "screen": self._screen_action,
         }
 
         handler = handlers.get(action)
@@ -262,3 +272,32 @@ class ExecutionKernel:
         cwd = params.get("cwd", ".")
         cmd = f"git {op}"
         return self._run_command({"command": cmd, "cwd": cwd})
+
+    def _browser_action(self, params: Dict[str, Any]) -> ExecutionResult:
+        """Phase 3: Playwright Browser Action."""
+        instruction = params.get("instruction", "")
+        if not instruction:
+            return ExecutionResult("failed", "", "No instruction provided for browser action.")
+        
+        try:
+            result = self.browser_controller.execute_instruction(instruction)
+            return ExecutionResult("success", result, verified=True)
+        except Exception as e:
+            return ExecutionResult("failed", "", f"Browser error: {str(e)}", verified=False)
+
+    def _screen_action(self, params: Dict[str, Any]) -> ExecutionResult:
+        """Phase 5: Screen Awareness Action."""
+        if not SCREEN_CAPTURE_AVAILABLE:
+            return ExecutionResult("failed", "", "Screen capture (PIL) not available.")
+        
+        instruction = params.get("instruction", "capture")
+        path = "screen_capture.png"
+        
+        try:
+            screenshot = ImageGrab.grab()
+            # Resize before sending to model (optional, but requested)
+            screenshot.thumbnail((1280, 720))
+            screenshot.save(path)
+            return ExecutionResult("success", f"Screen captured and saved to {path}. Instruction: {instruction}", verified=True)
+        except Exception as e:
+            return ExecutionResult("failed", "", f"Screen capture error: {str(e)}", verified=False)

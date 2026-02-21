@@ -2,9 +2,10 @@ agent:
   name: LUNA
   personality: calm_confident
   verbosity: minimal
+  mode: FAST
 cognitive:
-  max_iterations: 5
-  max_repair_attempts: 2
+  max_iterations: 1
+  max_repair_attempts: 0
   memory_compression_threshold: 4000
 gui:
   show_confidence: true
@@ -60,7 +61,7 @@ voice:
   acknowledgment_enabled: true
   acknowledgment_style: hmm
   always_on: true
-  enabled: false
+  enabled: true
   passive_listening: true
   silence_timeout_seconds: 5
   vosk_model_path: vosk-model-small-en-us
