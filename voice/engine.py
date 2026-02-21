@@ -1,12 +1,11 @@
 """
-LUNA AI Agent - Always-On Voice System v5.0
+LUNA AI Agent - Async Voice Engine v11.0
 Author: IRFAN
 
 Structural Stabilization Refactor:
-  - Background voice daemon thread.
-  - Non-blocking STT and TTS via queue.
-  - Improved wake word detection and command capture.
-  - Thread-safe voice operations.
+  - Non-blocking daemon threads for STT and TTS.
+  - Wake word detection (LUNA).
+  - Asynchronous callback for LLM processing.
 """
 
 import threading
@@ -30,7 +29,7 @@ except ImportError:
     SR_AVAILABLE = False
 
 class VoiceEngine:
-    """Continuous passive listening system for LUNA (Daemon version)."""
+    """Non-blocking, asynchronous voice system for LUNA."""
 
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -39,12 +38,10 @@ class VoiceEngine:
         self.wake_word = self.voice_config.get("wake_word", "luna").lower()
         
         self._stop_event = threading.Event()
-        self._wake_thread: Optional[threading.Thread] = None
-        self._wake_callback: Optional[Callable] = None
-        
         self._tts_queue = queue.Queue()
         self._tts_worker_thread: Optional[threading.Thread] = None
-        self._tts_lock = threading.Lock()
+        self._wake_thread: Optional[threading.Thread] = None
+        self._on_command_callback: Optional[Callable] = None
 
         if self.enabled:
             self._init_tts()
@@ -55,7 +52,6 @@ class VoiceEngine:
         
         def tts_worker():
             try:
-                # Engine must be initialized in the same thread it's used
                 engine = pyttsx3.init()
                 engine.setProperty("rate", 170)
                 engine.setProperty("volume", 0.8)
@@ -64,9 +60,8 @@ class VoiceEngine:
                     try:
                         text = self._tts_queue.get(timeout=1.0)
                         if text:
-                            with self._tts_lock:
-                                engine.say(text)
-                                engine.runAndWait()
+                            engine.say(text)
+                            engine.runAndWait()
                         self._tts_queue.task_done()
                     except queue.Empty:
                         continue
@@ -79,18 +74,18 @@ class VoiceEngine:
         self._tts_worker_thread.start()
 
     def speak(self, text: str):
-        """Non-blocking TTS execution via queue."""
+        """Queue text for non-blocking speech output."""
         if not self.enabled or not TTS_AVAILABLE: return
         self._tts_queue.put(text)
 
-    def start_passive_listening(self, on_wake: Callable):
+    def start_passive_listening(self, on_command: Callable):
         """Start wake word detection in a background daemon thread."""
         if not self.enabled or not SR_AVAILABLE: return
-        self._wake_callback = on_wake
+        self._on_command_callback = on_command
         self._stop_event.clear()
         self._wake_thread = threading.Thread(target=self._wake_word_loop, daemon=True)
         self._wake_thread.start()
-        logger.info(f"Always-on voice engine started. Wake word: '{self.wake_word}'")
+        logger.info(f"[Voice] Async listening started (Wake word: {self.wake_word}).")
 
     def stop_passive_listening(self):
         """Stop background listening."""
@@ -114,17 +109,18 @@ class VoiceEngine:
                 
                 if self.wake_word in text:
                     logger.info("Wake word detected!")
-                    self.speak("hmm?")
+                    self.speak("Yes?")
                     
+                    # Capture command
                     command = text.split(self.wake_word)[-1].strip()
                     if not command:
                         with sr.Microphone() as source:
                             audio = recognizer.listen(source, timeout=3, phrase_time_limit=10)
                         command = recognizer.recognize_google(audio)
                     
-                    if command and self._wake_callback:
-                        # Non-blocking callback
-                        threading.Thread(target=self._wake_callback, args=(command,), daemon=True).start()
+                    if command and self._on_command_callback:
+                        # Call LLM async to avoid blocking voice loop
+                        threading.Thread(target=self._on_command_callback, args=(command,), daemon=True).start()
                         
             except (sr.WaitTimeoutError, sr.UnknownValueError):
                 continue

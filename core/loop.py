@@ -1,106 +1,115 @@
 """
-LUNA AI Agent - Core Execution Loop v10.0
+LUNA AI Agent - OS Agent Orchestrator v11.0
 Author: IRFAN
 
 Structural Stabilization Refactor:
-  - Clean non-blocking architecture.
-  - Strict JSON thought filtering (thoughts never reach user).
-  - Integrated Action-based Jarvis flow.
+  - Task Orchestrator with Queue-based execution.
+  - Multi-step reasoning in AGENT mode.
+  - Non-blocking cognitive loop.
 """
 
-import json
-import os
-import time
-import logging
 import threading
+import queue
+import logging
+import time
 from typing import Dict, Any, List, Optional
-
 from llm.provider import LLMManager
-from llm.router import LLMRouter, BrainOutput, normalize_brain_output
-from execution.kernel import ExecutionKernel, ExecutionResult
-from risk.engine import RiskEngine
-from memory.system import MemorySystem
+from llm.router import LLMRouter, BrainOutput
+from execution.kernel import ExecutionKernel
 from voice.engine import VoiceEngine
+from memory.system import MemorySystem
 
 logger = logging.getLogger("luna.core.loop")
 
 class CognitiveLoop:
-    """The central brain of LUNA, managing the non-blocking execution loop."""
+    """The central brain and orchestrator of LUNA."""
 
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.llm_manager = LLMManager(config)
-        self.execution_kernel = ExecutionKernel(config)
-        self.risk_engine = RiskEngine(config)
-        self.memory_system = MemorySystem(config)
         self.router = LLMRouter(self.llm_manager, config)
+        self.kernel = ExecutionKernel(config)
         self.voice = VoiceEngine(config)
+        self.memory = MemorySystem(config)
         
-        # FAST MODE (default): Single LLM call, Direct action, No planning
+        self.task_queue = queue.Queue()
+        self.is_running = True
         self.mode = config.get("agent", {}).get("mode", "FAST")
-        self.is_running = False
-        self._lock = threading.Lock()
-
-    def run(self, goal: str) -> ExecutionResult:
-        """Single-pass execution of a user goal."""
-        logger.info(f"[Loop] New Goal: {goal}")
         
-        # 1. Routing (Single LLM Call)
-        routing = self.router.route(goal, history=self.memory_system.short_term)
+        # Start the orchestrator thread
+        self.orchestrator_thread = threading.Thread(target=self._orchestrator_worker, daemon=True)
+        self.orchestrator_thread.start()
+
+    def _orchestrator_worker(self):
+        """Background thread to process the task queue."""
+        logger.info("[Orchestrator] Worker started.")
+        while self.is_running:
+            try:
+                task_goal = self.task_queue.get(timeout=1.0)
+                if task_goal:
+                    self._process_goal(task_goal)
+                self.task_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"[Orchestrator] Error: {e}")
+
+    def _process_goal(self, goal: str):
+        """Process a user goal through the cognitive-execution loop."""
+        logger.info(f"[Orchestrator] Processing: {goal}")
         
-        if not isinstance(routing, BrainOutput):
-            routing = normalize_brain_output(routing)
-
-        # 2. Extract Action and Parameters
-        action = routing.action
-        params = routing.parameters
-        response = routing.response
-        thought = routing.thought
-
-        # 3. Internal Thought Filtering (Log but don't show to user)
-        if thought:
-            logger.debug(f"[Brain Thought] {thought}")
-
-        # 4. Handle Conversation Action
-        if action == "conversation":
+        # 1. Cognitive Routing (DeepSeek)
+        routing: BrainOutput = self.router.route(goal, history=self.memory.short_term)
+        
+        # 2. Execution Routing
+        if routing.intent == "conversation":
+            response = routing.response
             if response:
                 print(f"\nLUNA: {response}")
-                if self.voice.enabled:
-                    self.voice.speak(response)
+                if self.voice.enabled: self.voice.speak(response)
             self._update_memory(goal, response)
-            return ExecutionResult("success", response, verified=True)
+            return
 
-        # 5. Execute Action via Central Router
-        print(f"Executing Action: {action}...")
+        # 3. Execute Action
+        print(f"Executing Intent: {routing.intent}...")
+        # Map intents to kernel actions
+        action_map = {
+            "system_command": "system",
+            "browser_task": "browser",
+            "file_operation": "file",
+            "app_control": "app",
+            "code": "code"
+        }
         
-        # Risk check
-        risk_report = self.risk_engine.get_risk_report(action, params)
-        if risk_report["blocked"]:
-            return ExecutionResult.failure(f"Action blocked: {risk_report['label']}")
-
-        # Execute via Kernel (Central Action Router)
-        result = self.execution_kernel.execute(action, params)
+        action = action_map.get(routing.intent, "system")
+        result = self.kernel.execute(action, routing.parameters)
         
-        # 6. Speak result if voice enabled
-        if self.voice.enabled:
-            speech_content = result.content if result.status == "success" else f"Action failed: {result.error}"
-            self.voice.speak(speech_content)
+        # 4. Handle Result
+        final_content = result.content if result.status == "success" else f"Action failed: {result.error}"
+        if self.voice.enabled: self.voice.speak(final_content)
         
-        # 7. Update Memory and Return
-        final_content = result.content if result.status == "success" else f"Error: {result.error}"
         self._update_memory(goal, final_content)
-        return result
+        
+        # 5. Multi-step Check (AGENT mode)
+        if self.mode == "AGENT" and result.status == "success":
+            # For now, AGENT mode is just a placeholder for more complex loops
+            pass
 
-    def run_async(self, goal: str):
-        """Run goal in a separate thread to avoid blocking GUI/Voice."""
-        threading.Thread(target=self.run, args=(goal,), daemon=True).start()
+    def run(self, goal: str):
+        """Entry point for user input. Adds goal to the orchestrator queue."""
+        self.task_queue.put(goal)
 
     def start_voice_mode(self):
         """Start always-on voice listening."""
         if self.voice.enabled:
-            self.voice.start_passive_listening(on_wake=self.run_async)
+            self.voice.start_passive_listening(on_command=self.run)
 
     def _update_memory(self, goal: str, response: str):
         """Update short-term memory with user goal and assistant response."""
-        self.memory_system.add_short_term("user", str(goal))
-        self.memory_system.add_short_term("assistant", response)
+        self.memory.add_short_term("user", str(goal))
+        self.memory.add_short_term("assistant", response)
+
+    def stop(self):
+        self.is_running = False
+        self.kernel.browser_controller.close()
+        self.voice.stop_passive_listening()

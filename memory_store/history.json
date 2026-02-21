@@ -190,5 +190,77 @@
     "content": "Hello! I'm LUNA, ready to assist you with real-time actions.",
     "timestamp": "2026-02-21T08:24:28.624486",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, who are you?",
+    "timestamp": "2026-02-21T09:03:24.744604",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "I am LUNA, a high-performance DeepSeek-powered OS Agent here to execute your commands with precision.",
+    "timestamp": "2026-02-21T09:03:24.745127",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Search for AI news on Google.",
+    "timestamp": "2026-02-21T09:03:27.070099",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Navigated to https://www.google.com",
+    "timestamp": "2026-02-21T09:03:27.070623",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Create a file named test_os.txt with content 'LUNA OS AGENT TEST'.",
+    "timestamp": "2026-02-21T09:03:31.315419",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Error: No code provided for code action.",
+    "timestamp": "2026-02-21T09:03:31.315961",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Hello LUNA, who are you?",
+    "timestamp": "2026-02-21T09:03:49.877023",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "I am LUNA, a high-performance DeepSeek-powered OS Agent here to execute your commands with precision.",
+    "timestamp": "2026-02-21T09:03:49.877721",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Search for AI news on Google.",
+    "timestamp": "2026-02-21T09:03:52.193761",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "Navigated to https://www.google.com",
+    "timestamp": "2026-02-21T09:03:52.194327",
+    "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Create a file named test_os.txt with content 'LUNA OS AGENT TEST'.",
+    "timestamp": "2026-02-21T09:03:57.663317",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "File created: test_os.txt",
+    "timestamp": "2026-02-21T09:03:57.663891",
+    "is_voice": false
   }
 ]

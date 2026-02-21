@@ -1,37 +1,21 @@
 """
-LUNA AI Agent - Professional GUI v9.0
+LUNA AI Agent - OS Agent GUI v11.0
 Author: IRFAN
 
 Structural Stabilization Refactor:
-  - FAST / AGENT mode switch in GUI.
-  - Voice On/Off toggle.
-  - Non-blocking LLM calls via AgentWorker.
-  - Improved action log & execution result visualization.
-  - Daemon voice system that persists when GUI is minimized.
+  - Non-blocking GUI interaction with Task Orchestrator.
+  - Mode and Voice toggles.
+  - Real-time status and memory display.
 """
 
 import sys
-import os
-import time
-import psutil
-import yaml
 import logging
-import threading
-from typing import Optional
-
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QLineEdit, QPushButton, QLabel, QProgressBar,
-    QTabWidget, QListWidget, QFrame, QSplitter, QScrollArea,
-    QTableWidget, QTableWidgetItem, QHeaderView, QStatusBar,
-    QGroupBox, QCheckBox, QSystemTrayIcon, QMenu, QComboBox
-)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
-from PyQt6.QtGui import QFont, QColor, QIcon, QAction
-
-from core.loop import CognitiveLoop
-from core.task_result import TaskResult
-from voice.engine import VoiceEngine
+import psutil
+from typing import Dict, Any
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                             QHBoxLayout, QTextEdit, QLineEdit, QPushButton, 
+                             QLabel, QComboBox, QCheckBox, QProgressBar)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 
 logger = logging.getLogger("luna.gui.monitor")
 
@@ -39,283 +23,178 @@ DARK_STYLE = """
 QMainWindow, QWidget {
     background-color: #1e1e1e;
     color: #d4d4d4;
-    font-family: Consolas, 'Courier New', monospace;
+    font-family: 'Segoe UI', Arial, sans-serif;
 }
-QTabWidget::pane {
+QTextEdit {
+    background-color: #252526;
     border: 1px solid #3e3e3e;
-    background-color: #1e1e1e;
+    border-radius: 4px;
+    padding: 8px;
 }
-QTabBar::tab {
-    background: #252526;
-    color: #808080;
-    padding: 6px 14px;
+QLineEdit {
+    background-color: #3c3c3c;
     border: 1px solid #3e3e3e;
+    border-radius: 4px;
+    padding: 8px;
+    color: white;
 }
-QTabBar::tab:selected {
-    background: #1e1e1e;
-    color: #007acc;
-    border-bottom: 2px solid #007acc;
+QPushButton {
+    background-color: #007acc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+QPushButton:hover {
+    background-color: #0062a3;
 }
 """
 
-class AgentWorker(QThread):
-    """Worker thread to handle LLM calls without blocking the main UI thread."""
-    finished = pyqtSignal(object)
-    
-    def __init__(self, loop: CognitiveLoop, goal: str):
+class GUISignals(QObject):
+    update_log = pyqtSignal(str)
+    update_memory = pyqtSignal(str)
+
+class LUNAMonitor(QMainWindow):
+    def __init__(self, loop):
         super().__init__()
         self.loop = loop
-        self.goal = goal
-        self._is_running = True
-
-    def run(self):
-        try:
-            # Execute the cognitive loop in a separate thread
-            result = self.loop.run(self.goal)
-            if self._is_running:
-                self.finished.emit(result)
-        except Exception as e:
-            logger.error(f"Cognitive error: {e}")
-            if self._is_running:
-                self.finished.emit(TaskResult.failure(f"Cognitive Engine Error: {str(e)}"))
-
-    def stop(self):
-        self._is_running = False
-        self.terminate()
-        self.wait()
-
-class MonitorWindow(QMainWindow):
-    """Main application window for LUNA."""
-    
-    def __init__(self, config: dict):
-        super().__init__()
-        self.config = config
-        self.loop = CognitiveLoop(config)
-        self.voice_engine = VoiceEngine(config)
-        self.worker = None
+        self.signals = GUISignals()
         self.setStyleSheet(DARK_STYLE)
         self.init_ui()
-        self.init_tray()
         
-        # Start voice system if enabled in config
-        if self.voice_engine.enabled:
-            QTimer.singleShot(1000, self.start_voice_system)
+        # Connect signals
+        self.signals.update_log.connect(self.append_log)
+        self.signals.update_memory.connect(self.refresh_memory)
         
-        # Stats update timer
-        self.stats_timer = QTimer()
-        self.stats_timer.timeout.connect(self.update_stats)
-        self.stats_timer.start(2000)
+        # Periodic refresh timer
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.periodic_update)
+        self.timer.start(1000)
 
     def init_ui(self):
-        self.setWindowTitle("LUNA 9.0 — REAL-TIME SYSTEM COMPANION")
-        self.setMinimumSize(1200, 800)
+        self.setWindowTitle("LUNA OS Agent - DeepSeek Orchestrator")
+        self.setMinimumSize(1000, 700)
         
-        central = QWidget()
-        self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        layout = QHBoxLayout(central_widget)
         
-        # Left: Chat & Timeline
-        left_panel = QSplitter(Qt.Orientation.Vertical)
+        # Left Panel: Main Interaction
+        left_panel = QVBoxLayout()
         
-        # Chat Widget
-        chat_widget = QWidget()
-        chat_layout = QVBoxLayout(chat_widget)
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
-        chat_layout.addWidget(QLabel("LUNA CHAT"))
-        chat_layout.addWidget(self.chat_display)
+        # Header
+        header = QHBoxLayout()
+        self.status_label = QLabel("Status: Ready")
+        self.status_label.setStyleSheet("font-weight: bold; color: #007acc;")
+        header.addWidget(self.status_label)
+        header.addStretch()
+        
+        self.mode_selector = QComboBox()
+        self.mode_selector.addItems(["FAST", "AGENT"])
+        self.mode_selector.currentTextChanged.connect(self.change_mode)
+        header.addWidget(QLabel("Mode:"))
+        header.addWidget(self.mode_selector)
+        
+        self.voice_toggle = QCheckBox("Voice Enabled")
+        self.voice_toggle.setChecked(self.loop.voice.enabled)
+        self.voice_toggle.stateChanged.connect(self.toggle_voice)
+        header.addWidget(self.voice_toggle)
+        left_panel.addLayout(header)
+        
+        # Memory Display
+        left_panel.addWidget(QLabel("Conversation History:"))
+        self.memory_display = QTextEdit()
+        self.memory_display.setReadOnly(True)
+        left_panel.addWidget(self.memory_display)
         
         # Input Area
         input_layout = QHBoxLayout()
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("Type your goal...")
-        self.input_field.returnPressed.connect(self.handle_action)
+        self.input_field.setPlaceholderText("Enter command for LUNA (e.g., 'open browser and search for news')...")
+        self.input_field.returnPressed.connect(self.send_command)
         
-        self.action_btn = QPushButton("Send")
-        self.action_btn.clicked.connect(self.handle_action)
-        self.action_btn.setStyleSheet("background-color: #007acc; color: white; padding: 8px 20px;")
-        
-        self.voice_btn = QPushButton("🎤")
-        self.voice_btn.setCheckable(True)
-        self.voice_btn.toggled.connect(self.toggle_manual_voice)
+        self.send_btn = QPushButton("Execute")
+        self.send_btn.clicked.connect(self.send_command)
         
         input_layout.addWidget(self.input_field)
-        input_layout.addWidget(self.voice_btn)
-        input_layout.addWidget(self.action_btn)
-        chat_layout.addLayout(input_layout)
+        input_layout.addWidget(self.send_btn)
+        left_panel.addLayout(input_layout)
         
-        # Timeline / Action Log
-        self.timeline = QTableWidget(0, 4)
-        self.timeline.setHorizontalHeaderLabels(["Timestamp", "Action", "Status", "Result"])
-        self.timeline.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Right Panel: System Stats & Logs
+        right_panel = QVBoxLayout()
+        right_panel.setFixedWidth(300)
         
-        left_panel.addWidget(chat_widget)
-        left_panel.addWidget(self.timeline)
-        
-        # Right Panel: Monitors & Settings
-        right_panel = QTabWidget()
-        right_panel.setFixedWidth(350)
-        
-        # Monitor Tab
-        mon_tab = QWidget()
-        mon_layout = QVBoxLayout(mon_tab)
+        # Stats
+        right_panel.addWidget(QLabel("System Resources:"))
         self.cpu_bar = QProgressBar()
         self.ram_bar = QProgressBar()
-        mon_layout.addWidget(QLabel("CPU USAGE"))
-        mon_layout.addWidget(self.cpu_bar)
-        mon_layout.addWidget(QLabel("RAM USAGE"))
-        mon_layout.addWidget(self.ram_bar)
+        right_panel.addWidget(QLabel("CPU:"))
+        right_panel.addWidget(self.cpu_bar)
+        right_panel.addWidget(QLabel("RAM:"))
+        right_panel.addWidget(self.ram_bar)
         
-        # Performance Mode Switch
-        mon_layout.addWidget(QLabel("PERFORMANCE MODE"))
-        self.mode_switch = QComboBox()
-        self.mode_switch.addItems(["FAST", "AGENT"])
-        self.mode_switch.currentTextChanged.connect(self.change_mode)
-        mon_layout.addWidget(self.mode_switch)
+        right_panel.addSpacing(20)
         
-        # Voice System Toggle
-        self.voice_toggle = QCheckBox("Always-on Voice")
-        self.voice_toggle.setChecked(self.voice_engine.enabled)
-        self.voice_toggle.stateChanged.connect(self.toggle_voice_system)
-        mon_layout.addWidget(self.voice_toggle)
+        # Logs
+        right_panel.addWidget(QLabel("Real-time Logs:"))
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+        self.log_display.setFont(Qt.ScrollBarAlwaysOff) # Use small font
+        self.log_display.setStyleSheet("font-size: 10px; color: #888;")
+        right_panel.addWidget(self.log_display)
         
-        self.voice_status_lbl = QLabel("Voice: " + ("Passive Mode" if self.voice_engine.enabled else "Disabled"))
-        self.voice_status_lbl.setStyleSheet("color: gray;")
-        mon_layout.addWidget(self.voice_status_lbl)
-        
-        mon_layout.addStretch()
-        
-        # Config Tab
-        self.config_edit = QTextEdit()
-        self.config_edit.setPlainText(yaml.dump(self.config))
-        
-        right_panel.addTab(mon_tab, "Monitor")
-        right_panel.addTab(self.config_edit, "Config")
-        
-        layout.addWidget(left_panel, 3)
-        layout.addWidget(right_panel, 1)
+        layout.addLayout(left_panel, 3)
+        layout.addLayout(right_panel, 1)
 
-    def init_tray(self):
-        """Initialize system tray icon for background operation."""
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            return
-        self.tray_icon = QSystemTrayIcon(self)
-        icon_path = "architecture.png"
-        if os.path.exists(icon_path):
-            self.tray_icon.setIcon(QIcon(icon_path))
-        self.tray_icon.setToolTip("LUNA AI Agent")
-        
-        menu = QMenu()
-        show_action = QAction("Show", self)
-        show_action.triggered.connect(self.showNormal)
-        quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(QApplication.instance().quit)
-        menu.addAction(show_action)
-        menu.addAction(quit_action)
-        
-        self.tray_icon.setContextMenu(menu)
-        self.tray_icon.show()
+    def send_command(self):
+        text = self.input_field.text().strip()
+        if text:
+            self.append_log(f"User Input: {text}")
+            self.loop.run(text)
+            self.input_field.clear()
+            self.status_label.setText("Status: Processing...")
 
-    def update_stats(self):
-        """Update CPU and RAM usage statistics."""
+    def append_log(self, text):
+        self.log_display.append(text)
+
+    def refresh_memory(self, text):
+        self.memory_display.setText(text)
+
+    def change_mode(self, mode):
+        self.loop.mode = mode
+        self.append_log(f"System: Switched to {mode} mode.")
+
+    def toggle_voice(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.loop.voice.enabled = enabled
+        self.append_log(f"System: Voice {'enabled' if enabled else 'disabled'}.")
+        if enabled:
+            self.loop.start_voice_mode()
+        else:
+            self.loop.voice.stop_passive_listening()
+
+    def periodic_update(self):
+        # Update memory display
+        history_text = ""
+        for entry in self.loop.memory.short_term:
+            role = entry['role'].upper()
+            content = entry['content']
+            history_text += f"<b>{role}:</b> {content}<br><br>"
+        self.signals.update_memory.emit(history_text)
+        
+        # Update status
+        qsize = self.loop.task_queue.qsize()
+        if qsize == 0:
+            self.status_label.setText("Status: Ready")
+        else:
+            self.status_label.setText(f"Status: Processing ({qsize} tasks in queue)")
+            
+        # Update bars
         self.cpu_bar.setValue(int(psutil.cpu_percent()))
         self.ram_bar.setValue(int(psutil.virtual_memory().percent))
 
-    def change_mode(self, mode):
-        """Toggle between FAST and AGENT modes."""
-        self.loop.mode = mode
-        self.chat_display.append(f"<i>System: Switched to {mode} mode.</i>")
-
-    def toggle_voice_system(self, state):
-        """Toggle the entire voice engine on/off."""
-        enabled = state == Qt.CheckState.Checked.value
-        self.voice_engine.enabled = enabled
-        if enabled:
-            self.start_voice_system()
-            self.voice_status_lbl.setText("Voice: Passive Mode")
-        else:
-            self.voice_engine.stop_passive_listening()
-            self.voice_status_lbl.setText("Voice: Disabled")
-
-    def handle_action(self):
-        """Handle Send/Stop button click."""
-        if self.action_btn.text() == "Send":
-            self.send_goal()
-        else:
-            self.stop_task()
-
-    def send_goal(self, goal=None):
-        """Send goal to the agent worker thread."""
-        if goal is None:
-            goal = self.input_field.text().strip()
-        
-        if not goal: return
-        
-        self.chat_display.append(f"<b>YOU:</b> {goal}")
-        self.input_field.clear()
-        self.input_field.setEnabled(False)
-        self.action_btn.setText("STOP")
-        self.action_btn.setStyleSheet("background-color: #d13438; color: white; padding: 8px 20px;")
-        
-        # Start worker thread
-        self.worker = AgentWorker(self.loop, goal)
-        self.worker.finished.connect(self.handle_result)
-        self.worker.start()
-
-    def stop_task(self):
-        """Interrupt the current task."""
-        if self.worker:
-            self.worker.stop()
-            self.chat_display.append("<i>Task interrupted by user.</i>")
-            self.reset_ui()
-
-    def handle_result(self, result):
-        """Handle result from agent worker thread."""
-        self.chat_display.append(f"<b>LUNA:</b> {result.content}")
-        
-        # Add to timeline
-        row = self.timeline.rowCount()
-        self.timeline.insertRow(row)
-        timestamp = time.strftime("%H:%M:%S")
-        self.timeline.setItem(row, 0, QTableWidgetItem(timestamp))
-        self.timeline.setItem(row, 1, QTableWidgetItem("Direct Action"))
-        self.timeline.setItem(row, 2, QTableWidgetItem(result.status.upper()))
-        self.timeline.setItem(row, 3, QTableWidgetItem(result.content[:100] + "..."))
-        
-        self.reset_ui()
-
-    def reset_ui(self):
-        """Reset UI after task completion or interruption."""
-        self.input_field.setEnabled(True)
-        self.action_btn.setText("Send")
-        self.action_btn.setStyleSheet("background-color: #007acc; color: white; padding: 8px 20px;")
-
-    def start_voice_system(self):
-        """Start passive listening in background."""
-        self.voice_engine.start_passive_listening(self.handle_voice_command)
-
-    def handle_voice_command(self, command):
-        """Handle command received from voice engine."""
-        # Use QTimer to ensure UI updates happen in the main thread
-        QTimer.singleShot(0, lambda: self._process_voice_command(command))
-
-    def _process_voice_command(self, command):
-        self.chat_display.append(f"<b>YOU (voice):</b> {command}")
-        self.send_goal(command)
-
-    def toggle_manual_voice(self, checked):
-        """Handle manual microphone button toggle."""
-        if checked:
-            self.voice_btn.setStyleSheet("background-color: #28a745; color: white;")
-            self.voice_status_lbl.setText("Voice: Listening...")
-            self.chat_display.append("<i>Voice system: Active Listening...</i>")
-            # In a real app, this would trigger immediate STT
-        else:
-            self.voice_btn.setStyleSheet("")
-            self.voice_status_lbl.setText("Voice: Passive Mode")
-
-def run_gui(config):
+def start_gui(loop):
     app = QApplication(sys.argv)
-    win = MonitorWindow(config)
-    win.show()
+    monitor = LUNAMonitor(loop)
+    monitor.show()
     sys.exit(app.exec())
