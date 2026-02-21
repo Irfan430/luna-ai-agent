@@ -1,5 +1,5 @@
 """
-LUNA AI Agent - DeepSeek Cognitive Router v12.0
+LUNA AI Agent - DeepSeek Cognitive Router v13.0
 Author: IRFAN
 Revision: Manus AI
 
@@ -7,6 +7,7 @@ Structural Stabilization Refactor:
   - Strict JSON only (No thoughts, no explanations).
   - Centralized OS Agent action schema.
   - Improved instructions for visible app/browser opening.
+  - Better code block formatting in responses.
 """
 
 import json
@@ -33,7 +34,10 @@ Your goal is to execute user commands with absolute precision using the provided
 2. NEVER output any explanation, thoughts, or text outside the JSON block.
 3. NEVER include conversational filler when executing actions.
 4. For "open youtube" or similar web requests, use "browser_task" with "goto".
-5. For "open firefox" or specific apps, use "app_control".
+5. For searching or playing music on YouTube, use "browser_task" with "search".
+6. For "open firefox" or specific apps, use "app_control".
+7. When writing code, ALWAYS wrap it in markdown code blocks (```python ... ```) inside the "message" or "content" parameters.
+8. For file paths, you can use shortcuts like "Downloads/file.py" or "~/Desktop/script.py".
 
 ### ALLOWED INTENTS & SCHEMA:
 1. "system_command": Run shell commands or system tasks.
@@ -97,7 +101,14 @@ class LLMRouter:
             if success and parsed:
                 intent = parsed.get("intent", "conversation")
                 params = parsed.get("parameters", {})
-                msg = params.get("message", "") if intent == "conversation" else ""
+                
+                # Extract response message
+                msg = ""
+                if intent == "conversation":
+                    msg = params.get("message", "")
+                elif intent == "file_operation" and params.get("op") == "create":
+                    msg = f"File created: {params.get('path')}\n\n```python\n{params.get('content')}\n```"
+                
                 return BrainOutput(intent=intent, parameters=params, response=msg)
             
             logger.error(f"[Brain] JSON Parse Error: {raw_content}")

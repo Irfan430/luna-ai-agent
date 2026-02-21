@@ -1,11 +1,12 @@
 """
-LUNA AI Agent - OS Agent Execution Kernel (OAEK) v12.0
+LUNA AI Agent - OS Agent Execution Kernel (OAEK) v13.0
 Author: IRFAN
 Revision: Manus AI
 
 Structural Stabilization Refactor:
   - Centralized Action Router: system, browser, file, app.
   - Improved App/Browser opening for visible GUI interaction.
+  - Smart File Path Handling (Home, Downloads, Desktop expansion).
   - Standardized ExecutionResult for all OS Agent intents.
 """
 
@@ -68,6 +69,26 @@ class ExecutionKernel:
             "code": self._handle_code
         }
 
+    def _resolve_path(self, path: str) -> str:
+        """Resolve common path shortcuts like ~, Downloads, Desktop."""
+        if not path: return path
+        
+        # Expand ~ to home directory
+        path = os.path.expanduser(path)
+        
+        # Handle common folder names if they are not absolute
+        if not os.path.isabs(path):
+            home = os.path.expanduser("~")
+            lower_path = path.lower()
+            if lower_path.startswith("downloads"):
+                path = os.path.join(home, "Downloads", path[9:].lstrip("/\\"))
+            elif lower_path.startswith("desktop"):
+                path = os.path.join(home, "Desktop", path[7:].lstrip("/\\"))
+            elif lower_path.startswith("documents"):
+                path = os.path.join(home, "Documents", path[9:].lstrip("/\\"))
+        
+        return path
+
     def get_system_stats(self) -> Dict[str, Any]:
         return {
             "cpu_percent": psutil.cpu_percent(interval=0.1),
@@ -110,6 +131,8 @@ class ExecutionKernel:
             return ExecutionResult.failure(f"Dangerous command blocked: {cmd}")
             
         cwd = params.get("cwd")
+        if cwd: cwd = self._resolve_path(cwd)
+        
         try:
             process = subprocess.Popen(
                 cmd, shell=True, cwd=cwd,
@@ -136,6 +159,8 @@ class ExecutionKernel:
             try:
                 if not value.startswith("http"): value = "https://" + value
                 webbrowser.open(value)
+                # Also sync with Playwright for subsequent automation
+                self.browser_controller.execute(params)
                 return ExecutionResult("success", f"Opened {value} in your default browser.", verified=True)
             except Exception as e:
                 logger.warning(f"Failed to open system browser: {e}. Falling back to Playwright.")
@@ -153,11 +178,13 @@ class ExecutionKernel:
     def _handle_file(self, params: Dict[str, Any]) -> ExecutionResult:
         """Handle file operations (create, read, delete, list)."""
         op = params.get("op", "read")
-        path = params.get("path", ".")
+        path = self._resolve_path(params.get("path", "."))
         
         try:
             if op == "create":
                 content = params.get("content", "")
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
                 with open(path, 'w') as f:
                     f.write(content)
                 return ExecutionResult("success", f"File created: {path}", verified=True)
@@ -178,6 +205,8 @@ class ExecutionKernel:
                     return ExecutionResult.failure(f"Path not found: {path}")
             
             elif op == "list":
+                if not os.path.exists(path):
+                    return ExecutionResult.failure(f"Directory not found: {path}")
                 files = os.listdir(path)
                 return ExecutionResult("success", f"Files in {path}: {', '.join(files)}", verified=True)
             
@@ -219,8 +248,10 @@ class ExecutionKernel:
         if not code:
             return ExecutionResult.failure("No code provided for code action.")
         
-        filename = params.get("filename", "temp_script.py")
+        filename = self._resolve_path(params.get("filename", "temp_script.py"))
         try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
             with open(filename, 'w') as f:
                 f.write(code)
             
@@ -239,6 +270,6 @@ class ExecutionKernel:
         except Exception as e:
             return ExecutionResult.failure(str(e))
         finally:
-            if filename == "temp_script.py" and os.path.exists(filename):
+            if "temp_script.py" in filename and os.path.exists(filename):
                 try: os.remove(filename)
                 except: pass

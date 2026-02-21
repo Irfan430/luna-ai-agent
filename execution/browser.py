@@ -1,17 +1,20 @@
 """
-LUNA AI Agent - Persistent Browser Worker v11.0
+LUNA AI Agent - Persistent Browser Worker v12.0
 Author: IRFAN
+Revision: Manus AI
 
 Structural Stabilization Refactor:
   - Dedicated browser worker thread to avoid Playwright thread conflicts.
   - Persistent Chromium session (one launch per agent lifecycle).
-  - DOM-based interaction (goto, search, click, fill, scroll).
+  - Improved error handling for closed pages/contexts.
+  - Enhanced automation for YouTube and Google Search.
 """
 
 import threading
 import queue
 import logging
 import time
+import os
 from typing import Dict, Any, Optional
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 
@@ -22,7 +25,7 @@ class BrowserController:
 
     def __init__(self, config: Dict[str, Any] = None):
         self.config = config or {}
-        self.headless = self.config.get("browser", {}).get("headless", True)
+        self.headless = self.config.get("browser", {}).get("headless", False)
         
         self.request_queue = queue.Queue()
         self.response_queue = queue.Queue()
@@ -47,6 +50,11 @@ class BrowserController:
                         # Wait for requests
                         params = self.request_queue.get(timeout=1.0)
                         if params:
+                            # Check if page is closed and recreate if necessary
+                            if page.is_closed():
+                                logger.warning("[Browser] Page was closed. Recreating...")
+                                page = context.new_page()
+                            
                             result = self._execute_in_thread(page, params)
                             self.response_queue.put(result)
                         self.request_queue.task_done()
@@ -70,13 +78,24 @@ class BrowserController:
         try:
             if action == "goto":
                 if not value.startswith("http"): value = "https://" + value
-                page.goto(value)
+                page.goto(value, wait_until="networkidle")
                 return {"status": "success", "content": f"Navigated to {value}"}
             
             elif action == "search":
-                url = f"https://www.google.com/search?q={value.replace(' ', '+')}"
-                page.goto(url)
-                return {"status": "success", "content": f"Searched for '{value}' on Google."}
+                # Enhanced search for YouTube and Google
+                if "youtube.com" in page.url:
+                    page.fill('input[name="search_query"]', value)
+                    page.press('input[name="search_query"]', 'Enter')
+                    time.sleep(2) # Wait for results
+                    # Try to play the first video if it's a song request
+                    if "song" in value.lower() or "music" in value.lower() or "play" in value.lower():
+                        page.click('#video-title')
+                        return {"status": "success", "content": f"Searching and playing '{value}' on YouTube."}
+                    return {"status": "success", "content": f"Searched for '{value}' on YouTube."}
+                else:
+                    url = f"https://www.google.com/search?q={value.replace(' ', '+')}"
+                    page.goto(url, wait_until="networkidle")
+                    return {"status": "success", "content": f"Searched for '{value}' on Google."}
             
             elif action == "click":
                 if selector:
@@ -90,8 +109,8 @@ class BrowserController:
                 if selector:
                     page.fill(selector, value)
                 else:
-                    # Try filling first input
-                    page.fill("input", value)
+                    # Try filling first visible input
+                    page.fill("input:visible", value)
                 return {"status": "success", "content": f"Typed '{value}' into '{selector or 'input'}'"}
             
             elif action == "scroll":
@@ -105,6 +124,7 @@ class BrowserController:
             
             return {"status": "failed", "error": f"Unknown browser action: {action}"}
         except Exception as e:
+            logger.error(f"[Browser] Action {action} failed: {e}")
             return {"status": "failed", "error": str(e)}
 
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:

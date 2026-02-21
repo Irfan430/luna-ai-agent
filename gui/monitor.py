@@ -1,19 +1,19 @@
 """
-LUNA AI Agent - OS Agent GUI v12.0
+LUNA AI Agent - OS Agent GUI v13.0
 Author: IRFAN
 Revision: Manus AI
 
 Structural Stabilization Refactor:
   - Non-blocking GUI interaction with Task Orchestrator.
-  - Mode and Voice toggles.
+  - Live Typing Effect for LUNA responses.
+  - Markdown-like formatting for Code Blocks.
   - Real-time status and memory display.
-  - Fixed Layout attribute errors (QVBoxLayout.setFixedWidth).
-  - Externalized stylesheet.
 """
 import sys
 import logging
 import psutil
 import os
+import re
 from typing import Dict, Any
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QTextEdit, QLineEdit, QPushButton, 
@@ -26,6 +26,7 @@ logger = logging.getLogger("luna.gui.monitor")
 class LUNASignals(QObject):
     update_log = pyqtSignal(str)
     update_memory = pyqtSignal(str)
+    type_response = pyqtSignal(str)
 
 class LUNAMonitor(QMainWindow):
     def __init__(self, loop):
@@ -38,7 +39,14 @@ class LUNAMonitor(QMainWindow):
         
         self.signals.update_log.connect(self.append_log)
         self.signals.update_memory.connect(self.refresh_memory)
+        self.signals.type_response.connect(self.start_typing_effect)
         
+        self.typing_timer = QTimer()
+        self.typing_timer.timeout.connect(self.type_next_char)
+        self.full_text_to_type = ""
+        self.current_typed_text = ""
+        self.typing_index = 0
+
         self.timer = QTimer()
         self.timer.timeout.connect(self.periodic_update)
         self.timer.start(1000)
@@ -128,6 +136,29 @@ class LUNAMonitor(QMainWindow):
         else:
             logger.warning("Stylesheet (style.qss) not found. Using default style.")
 
+    def format_content(self, text: str) -> str:
+        """Format text with basic markdown-like code blocks."""
+        # Replace code blocks: ```code``` -> <pre>code</pre>
+        text = re.sub(r'```(.*?)\n?(.*?)```', r'<div style="background-color: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 5px; font-family: Monospace;"><pre>\2</pre></div>', text, flags=re.DOTALL)
+        # Replace single backticks: `code` -> <code>code</code>
+        text = re.sub(r'`(.*?)`', r'<code style="background-color: #3d3d3d; padding: 2px; border-radius: 3px;">\1</code>', text)
+        return text.replace("\n", "<br>")
+
+    def start_typing_effect(self, text: str):
+        self.full_text_to_type = text
+        self.current_typed_text = ""
+        self.typing_index = 0
+        self.typing_timer.start(20) # 20ms per character
+
+    def type_next_char(self):
+        if self.typing_index < len(self.full_text_to_type):
+            self.current_typed_text += self.full_text_to_type[self.typing_index]
+            self.typing_index += 1
+            # We don't update memory_display here directly to avoid flickering
+            # Instead, we'll let periodic_update handle the final render
+        else:
+            self.typing_timer.stop()
+
     def send_command(self):
         text = self.input_field.text().strip()
         if text:
@@ -140,6 +171,7 @@ class LUNAMonitor(QMainWindow):
         self.log_display.append(text)
 
     def refresh_memory(self, text):
+        # This is called by the orchestrator to update the full history
         self.memory_display.setHtml(text)
 
     def change_mode(self, mode):
@@ -160,8 +192,14 @@ class LUNAMonitor(QMainWindow):
         history_text = ""
         for entry in self.loop.memory.short_term:
             role = entry["role"].upper()
-            content = entry["content"].replace("\n", "<br>")
-            history_text += f"<b>{role}:</b> {content}<br><br>"
+            content = entry["content"]
+            
+            # Apply formatting
+            formatted_content = self.format_content(content)
+            
+            color = "#00ff00" if role == "ASSISTANT" else "#ffffff"
+            history_text += f"<b style='color: {color};'>{role}:</b> {formatted_content}<br><br>"
+        
         self.signals.update_memory.emit(history_text)
         
         qsize = self.loop.task_queue.qsize()
