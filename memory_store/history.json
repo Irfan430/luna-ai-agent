@@ -166,5 +166,17 @@
     "content": " 08:17:20 up 10 days,  4:33,  1 user,  load average: 0.10, 0.85, 9.79\n",
     "timestamp": "2026-02-21T08:17:20.410189",
     "is_voice": false
+  },
+  {
+    "role": "user",
+    "content": "Check system uptime.",
+    "timestamp": "2026-02-21T08:19:32.272432",
+    "is_voice": false
+  },
+  {
+    "role": "assistant",
+    "content": "System error in cognitive routing.",
+    "timestamp": "2026-02-21T08:19:32.272836",
+    "is_voice": false
   }
 ]
