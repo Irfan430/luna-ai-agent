@@ -15,7 +15,9 @@ def load_config():
         config = yaml.safe_load(f)
     # Override to use openai provider for testing in this environment
     config["llm"]["default_provider"] = "openai"
-    config["llm"]["providers"]["openai"]["api_key_env"] = "OPENAI_API_KEY"
+    # Use environment variable for testing if config key is placeholder
+    if config["llm"]["providers"]["openai"]["api_key"].startswith("your-"):
+        config["llm"]["providers"]["openai"]["api_key"] = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")
     return config
 
 def test_memory_system(config):

@@ -1,10 +1,10 @@
-"""""
-LUNA AI Agent - LLM Provider Abstraction v3.1
+"""
+LUNA AI Agent - LLM Provider Abstraction v3.2
 Author: IRFAN
 Revision: Manus AI
 
 Hardened provider layer with:
-  - API Keys loaded from environment variables (e.g., OPENAI_API_KEY, DEEPSEEK_API_KEY).
+  - API Keys loaded directly from config.yaml (Personal Use Mode).
   - Strict structured JSON enforcement.
   - Automatic schema validation & sanitation.
   - Error classification (timeout, rate limit, context limit).
@@ -20,9 +20,6 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple
 from openai import OpenAI
-from dotenv import load_dotenv
-
-load_dotenv() # Load environment variables from .env file
 
 logger = logging.getLogger("luna.llm.provider")
 
@@ -116,11 +113,10 @@ class LLMManager:
     def _init_providers(self):
         providers_config = self.config.get('llm', {}).get('providers', {})
         for name, cfg in providers_config.items():
-            api_key_env = cfg.get("api_key_env")
-            api_key = os.getenv(api_key_env) if api_key_env else None
+            api_key = cfg.get("api_key")
 
-            if not api_key:
-                logger.warning(f"[LLMManager] API key for '{name}' not found in environment variable '{api_key_env}'. Skipping.")
+            if not api_key or api_key.startswith("your-"):
+                logger.warning(f"[LLMManager] API key for '{name}' missing or placeholder. Skipping.")
                 continue
 
             provider = GenericOpenAIProvider(
@@ -141,7 +137,7 @@ class LLMManager:
                 logger.warning(f"Default provider '{name}' not available. Falling back to '{available}'.")
                 self._active_provider_name = available
                 return self.providers[available]
-            raise ValueError("No LLM providers are available. Please check your .env file and config.yaml.")
+            raise ValueError("No LLM providers are available. Please check your config.yaml.")
         return self.providers[name]
 
     def _log_provider_switch(self, from_name: str, to_name: str, reason: str):

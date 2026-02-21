@@ -25,11 +25,11 @@ llm:
   mode: single
   providers:
     deepseek:
-      api_key_env: DEEPSEEK_API_KEY
+      api_key: sk-af8395cfa3a24a6d86247567d8d9715c
       base_url: https://api.deepseek.com
       model: deepseek-chat
     openai:
-      api_key_env: OPENAI_API_KEY
+      api_key: your-openai-api-key-here
       base_url: https://api.openai.com/v1
       model: gpt-4.1-mini
   repair_attempt_limit: 2
